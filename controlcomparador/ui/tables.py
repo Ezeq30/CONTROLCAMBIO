@@ -1,0 +1,265 @@
+# -*- coding: utf-8 -*-
+
+from __future__ import annotations
+
+from typing import Optional
+
+from rich.table import Table
+from rich.panel import Panel
+from rich import box
+
+from controlcomparador.config import ORDEN_APUESTAS, SYM_OK, SYM_FAIL
+from controlcomparador.ui.console import console
+
+
+def _ordenar_codigos(codigos: set[str]) -> list[str]:
+    def key(cod):
+        try:
+            return (0, ORDEN_APUESTAS.index(cod))
+        except ValueError:
+            return (1, cod)
+    return sorted(codigos, key=key)
+
+
+def formato_valor(v: Optional[float]) -> str:
+    if v is None:
+        return "-"
+    if v == int(v):
+        return f"{int(v)}"
+    return f"{v:.2f}"
+
+
+def _estado_apuesta(v1: Optional[float], v2: Optional[float], etiq1: str, etiq2: str) -> str:
+    if v1 == v2:
+        return f"[green]{SYM_OK}[/green]"
+    if v1 is None:
+        return f"[yellow]solo {etiq2}[/yellow]"
+    if v2 is None:
+        return f"[yellow]solo {etiq1}[/yellow]"
+    return f"[red]{SYM_FAIL}[/red]"
+
+
+def _tabla_comparacion(
+    titulo: str,
+    carreras: list[int],
+    get_datos_carrera,
+    col1_nombre: str,
+    tiene_caballos: bool = True,
+) -> None:
+    console.rule(f"[bold]{titulo}[/bold]")
+    t = Table(box=box.SIMPLE, header_style="bold")
+    t.add_column("Carrera", style="yellow", width=6)
+    if tiene_caballos:
+        t.add_column("Caballos", justify="center", width=8)
+    t.add_column("Apuesta", style="cyan", width=8)
+    t.add_column(col1_nombre, justify="right", width=10)
+    t.add_column("Reporte", justify="right", width=10)
+    t.add_column("Estado", justify="center", width=10)
+
+    for num_carrera in carreras:
+        d1, d2, cab_str = get_datos_carrera(num_carrera)
+        codigos = _ordenar_codigos(set(d1.keys()) | set(d2.keys()))
+        for idx, cod in enumerate(codigos):
+            v1 = d1.get(cod)
+            v2 = d2.get(cod)
+            estado = _estado_apuesta(v1, v2, col1_nombre.lower(), "reporte")
+            carrera_str = str(num_carrera) if idx == 0 else ""
+            cab_show = cab_str if (idx == 0 and tiene_caballos) else ""
+            row = [carrera_str]
+            if tiene_caballos:
+                row.append(cab_show)
+            row.extend([cod, formato_valor(v1), formato_valor(v2), estado])
+            t.add_row(*row)
+
+    console.print(t)
+    console.print()
+
+
+def imprimir_tabla_san_isidro(
+    datos_pdf: dict,
+    datos_reporte: dict,
+    datos_posting: Optional[tuple[dict, set[str]]] = None,
+    fecha_reporte: Optional[str] = None,
+) -> None:
+    valores_posting = datos_posting[0] if datos_posting else {}
+    if fecha_reporte:
+        console.print(f"[info]Fecha del reporte: {fecha_reporte}[/info]")
+
+    console.rule("[bold]COMPARACION OFICIAL vs REPORTE[/bold]")
+    t = Table(box=box.SIMPLE, header_style="bold")
+    t.add_column("Carrera", style="yellow", width=6)
+    t.add_column("Caballos", justify="center", width=8)
+    t.add_column("Apuesta", style="cyan", width=8)
+    t.add_column("OFICIAL", justify="right", width=10)
+    t.add_column("Reporte", justify="right", width=10)
+    if datos_posting:
+        t.add_column("Posting", justify="right", width=10)
+    t.add_column("Estado", justify="center", width=10)
+
+    todas = sorted(set(datos_pdf.keys()) | set(datos_reporte.keys()))
+    for num_carrera in todas:
+        pdf = datos_pdf.get(num_carrera, {})
+        rep = datos_reporte.get(num_carrera, {})
+        pdf_ap = pdf.get("apuestas", {}) if pdf else {}
+        rep_ap = rep.get("apuestas", {}) if rep else {}
+        pos_ap = valores_posting.get(num_carrera, {})
+        c_pdf = pdf.get("caballos", "?") if pdf else "?"
+        c_rep = rep.get("caballos", "?") if rep else "?"
+        cab_str = f"{c_pdf}/{c_rep}"
+
+        todos_codigos = _ordenar_codigos(set(pdf_ap.keys()) | set(rep_ap.keys()))
+        for idx, cod in enumerate(todos_codigos):
+            v_pdf = pdf_ap.get(cod)
+            v_rep = rep_ap.get(cod)
+            estado = _estado_apuesta(v_pdf, v_rep, "oficial", "reporte")
+            carrera_str = str(num_carrera) if idx == 0 else ""
+            cab_show = cab_str if idx == 0 else ""
+            row = [carrera_str, cab_show, cod, formato_valor(v_pdf), formato_valor(v_rep)]
+            if datos_posting:
+                row.append(formato_valor(pos_ap.get(cod)))
+            row.append(estado)
+            t.add_row(*row)
+
+    console.print(t)
+    console.print()
+
+
+def imprimir_tablas_palermo(
+    datos_pdf: dict,
+    datos_reporte: tuple,
+    fechas: list[str],
+    fecha_usada: Optional[str],
+    datos_posting: Optional[tuple[dict, set[str]]] = None,
+) -> None:
+    valores_reporte, codigos_all = datos_reporte
+    valores_posting = datos_posting[0] if datos_posting else {}
+    if fechas:
+        console.print(f"[info]Fechas detectadas: {', '.join(fechas)}[/info]")
+    if fecha_usada:
+        console.print(f"[info]Fecha usada: {fecha_usada}[/info]")
+
+    console.rule("[bold]COMPARACION BASES PALERMO vs REPORTE[/bold]")
+    t = Table(box=box.SIMPLE, header_style="bold")
+    t.add_column("Carrera", style="yellow", width=6)
+    t.add_column("Caballos", justify="center", width=8)
+    t.add_column("Apuesta", style="cyan", width=8)
+    t.add_column("Bases Palermo", justify="right", width=10)
+    if datos_posting:
+        t.add_column("Posting", justify="right", width=10)
+    t.add_column("Reporte", justify="right", width=10)
+    t.add_column("Estado", justify="center", width=10)
+
+    todas = sorted(set(datos_pdf.keys()) | set(valores_reporte.keys()))
+    for num_carrera in todas:
+        ap_bases = datos_pdf.get(num_carrera, {})
+        ap_rep = valores_reporte.get(num_carrera, {})
+        pos_ap = valores_posting.get(num_carrera, {})
+        cab_str = "?/?"
+
+        todos_codigos = _ordenar_codigos(set(ap_bases.keys()) | set(ap_rep.keys()))
+        for idx, cod in enumerate(todos_codigos):
+            v_bases = ap_bases.get(cod)
+            v_rep = ap_rep.get(cod)
+            estado = _estado_apuesta(v_bases, v_rep, "bases", "reporte")
+            carrera_str = str(num_carrera) if idx == 0 else ""
+            cab_show = cab_str if idx == 0 else ""
+            row = [carrera_str, cab_show, cod, formato_valor(v_bases)]
+            if datos_posting:
+                row.append(formato_valor(pos_ap.get(cod)))
+            row.extend([formato_valor(v_rep), estado])
+            t.add_row(*row)
+
+    console.print(t)
+    console.print()
+
+
+def imprimir_tabla_laplata(
+    datos_planilla: dict,
+    datos_reporte: dict,
+    datos_posting: Optional[tuple[dict, set[str]]] = None,
+) -> None:
+    valores_posting = datos_posting[0] if datos_posting else {}
+
+    console.rule("[bold]COMPARACION PLANILLA vs REPORTE - LA PLATA[/bold]")
+    t = Table(box=box.SIMPLE, header_style="bold")
+    t.add_column("Carrera", style="yellow", width=6)
+    t.add_column("Caballos", justify="center", width=8)
+    t.add_column("Apuesta", style="cyan", width=8)
+    t.add_column("Planilla", justify="right", width=10)
+    if datos_posting:
+        t.add_column("Posting", justify="right", width=10)
+    t.add_column("Reporte", justify="right", width=10)
+    t.add_column("Estado", justify="center", width=10)
+
+    todas = sorted(set(datos_planilla.keys()) | set(datos_reporte.keys()))
+    for num_carrera in todas:
+        plan = datos_planilla.get(num_carrera, {})
+        rep = datos_reporte.get(num_carrera, {})
+        ap_plan = plan.get("apuestas", {}) if plan else {}
+        ap_rep = rep.get("apuestas", {}) if rep else {}
+        pos_ap = valores_posting.get(num_carrera, {})
+        c_plan = plan.get("caballos", "?") if plan else "?"
+        c_rep = rep.get("caballos", "?") if rep else "?"
+        cab_str = f"{c_plan}/{c_rep}"
+
+        todos_codigos = _ordenar_codigos(set(ap_plan.keys()) | set(ap_rep.keys()))
+        for idx, cod in enumerate(todos_codigos):
+            v_plan = ap_plan.get(cod)
+            v_rep = ap_rep.get(cod)
+            estado = _estado_apuesta(v_plan, v_rep, "planilla", "reporte")
+            carrera_str = str(num_carrera) if idx == 0 else ""
+            cab_show = cab_str if idx == 0 else ""
+            row = [carrera_str, cab_show, cod, formato_valor(v_plan)]
+            if datos_posting:
+                row.append(formato_valor(pos_ap.get(cod)))
+            row.extend([formato_valor(v_rep), estado])
+            t.add_row(*row)
+
+    console.print(t)
+    console.print()
+
+
+def imprimir_tabla_posting_vs_reporte(
+    datos_posting: tuple[dict, set[str]],
+    datos_reporte: tuple[dict, set[str]],
+) -> None:
+    valores_posting, _ = datos_posting
+    valores_reporte, _ = datos_reporte
+
+    console.rule("[bold]COMPARACION POSTING vs REPORTE[/bold]")
+    t = Table(box=box.SIMPLE, header_style="bold")
+    t.add_column("Carrera", style="yellow", width=6)
+    t.add_column("Apuesta", style="cyan", width=8)
+    t.add_column("Posting", justify="right", width=10)
+    t.add_column("Reporte", justify="right", width=10)
+    t.add_column("Estado", justify="center", width=10)
+
+    todas = sorted(set(valores_posting.keys()) | set(valores_reporte.keys()))
+    for num_carrera in todas:
+        pos_ap = valores_posting.get(num_carrera, {})
+        rep_ap = valores_reporte.get(num_carrera, {})
+        codigos = _ordenar_codigos(set(pos_ap.keys()) | set(rep_ap.keys()))
+        for idx, cod in enumerate(codigos):
+            v_pos = pos_ap.get(cod)
+            v_rep = rep_ap.get(cod)
+            estado = _estado_apuesta(v_pos, v_rep, "posting", "reporte")
+            carrera_str = str(num_carrera) if idx == 0 else ""
+            t.add_row(carrera_str, cod, formato_valor(v_pos), formato_valor(v_rep), estado)
+
+    console.print(t)
+    console.print()
+
+
+def mostrar_resumen_comparacion(coincide: bool, diferencias: list[str], titulo: str = "COMPARACION") -> None:
+    if coincide:
+        console.print(f"\n[bold green]{SYM_OK} {titulo}: todo coincide correctamente.[/bold green]\n")
+    else:
+        console.print(f"\n[bold red]{SYM_FAIL} {titulo}: se encontraron diferencias:[/bold red]")
+        for d in diferencias:
+            console.print(f"  [yellow]- {d}[/yellow]")
+        console.print()
+
+
+def mostrar_panel_info(titulo: str, contenido: str, estilo: str = "info") -> None:
+    panel = Panel(contenido, title=titulo, border_style=estilo)
+    console.print(panel)
