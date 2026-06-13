@@ -13,17 +13,17 @@ def _mock_pdf_con_datos():
 
 
 def _mock_reporte_con_datos():
-    return {
+    return ({
         1: {"caballos": 9, "apuestas": {"GAN": None, "SEG": None, "TER": None, "EXA": 500.0, "TRI": 1200.0}},
         2: {"caballos": 7, "apuestas": {"GAN": None, "SEG": None, "TER": None, "EXA": 550.0, "TRI": 1300.0}},
-    }
+    }, set())
 
 
 def _mock_reporte_con_diferencias():
-    return {
+    return ({
         1: {"caballos": 9, "apuestas": {"GAN": None, "SEG": None, "TER": None, "EXA": 500.0, "TRI": 9999.0}},
         2: {"caballos": 7, "apuestas": {"GAN": None, "SEG": None, "TER": None, "EXA": 550.0}},
-    }
+    }, set())
 
 
 class TestCompararPdfYReporte:
@@ -60,10 +60,10 @@ class TestCompararPdfYReporte:
     def test_no_compara_valor_de_gan_seg_ter(self, mock_reporte, mock_pdf):
         pdf = _mock_pdf_con_datos()
         pdf[1]["apuestas"]["GAN"] = 100.0
-        rep = _mock_reporte_con_datos()
-        rep[1]["apuestas"]["GAN"] = 200.0
+        rep_dict, rep_all = _mock_reporte_con_datos()
+        rep_dict[1]["apuestas"]["GAN"] = 200.0
         mock_pdf.return_value = pdf
-        mock_reporte.return_value = rep
+        mock_reporte.return_value = (rep_dict, rep_all)
         coincide, diferencias = comparar_pdf_y_reporte("pdf", "reporte")
         assert coincide is True
         assert all("GAN" not in d for d in diferencias)
@@ -74,7 +74,7 @@ class TestCompararPdfYReporte:
         mock_pdf.return_value = {
             1: {"caballos": 9, "apuestas": {"EXA": 500.0}},
         }
-        mock_reporte.return_value = {}
+        mock_reporte.return_value = ({}, set())
         coincide, diferencias = comparar_pdf_y_reporte("pdf", "reporte")
         assert coincide is False
         assert any("solo en PDF" in d or "presente en PDF" in d for d in diferencias)
@@ -83,9 +83,9 @@ class TestCompararPdfYReporte:
     @patch("controlcomparador.comparators.san_isidro.normalizar_reporte")
     def test_detecta_carrera_solo_en_reporte(self, mock_reporte, mock_pdf):
         mock_pdf.return_value = {}
-        mock_reporte.return_value = {
+        mock_reporte.return_value = ({
             1: {"caballos": 9, "apuestas": {"EXA": 500.0}},
-        }
+        }, set())
         coincide, diferencias = comparar_pdf_y_reporte("pdf", "reporte")
         assert coincide is False
         assert any("solo en Reporte" in d or "presente en Reporte" in d for d in diferencias)
@@ -96,9 +96,9 @@ class TestCompararPdfYReporte:
         mock_pdf.return_value = {
             1: {"caballos": 9, "apuestas": {"EXA": 500.0}},
         }
-        mock_reporte.return_value = {
+        mock_reporte.return_value = ({
             1: {"caballos": 10, "apuestas": {"EXA": 500.0}},
-        }
+        }, set())
         coincide, diferencias = comparar_pdf_y_reporte("pdf", "reporte")
         assert coincide is False
         assert any("caballos" in d for d in diferencias)

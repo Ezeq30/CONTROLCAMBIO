@@ -7,7 +7,7 @@ from typing import Optional
 
 from controlcomparador.config import APUESTAS_IGNORAR_LAPLATA
 from controlcomparador.parsers.planilla import normalizar_planilla_laplata
-from controlcomparador.parsers.report import normalizar_reporte
+from controlcomparador.parsers.report import normalizar_reporte, validar_pick_conflict
 
 
 def comparar_planilla_con_reporte(
@@ -15,14 +15,16 @@ def comparar_planilla_con_reporte(
     ruta_reporte: str | Path,
 ) -> tuple[bool, list[str]]:
     datos_planilla = normalizar_planilla_laplata(ruta_xls)
-    datos_reporte = normalizar_reporte(ruta_reporte)
+    datos_reporte, codigos_con_all = normalizar_reporte(ruta_reporte)
+
+    diferencias: list[str] = []
+    diferencias.extend(validar_pick_conflict(datos_reporte))
 
     if not datos_planilla:
         return False, ["No se pudo leer la planilla o no contiene datos validos"]
     if not datos_reporte:
         return False, ["No se pudo leer el reporte o no contiene datos validos"]
 
-    diferencias: list[str] = []
     todas_las_carreras = set(datos_planilla.keys()) | set(datos_reporte.keys())
 
     for num_carrera in sorted(todas_las_carreras):
@@ -46,7 +48,7 @@ def comparar_planilla_con_reporte(
         apuestas_planilla = set(datos_planilla[num_carrera]["apuestas"].keys())
         apuestas_reporte = set(datos_reporte[num_carrera]["apuestas"].keys())
         solo_en_planilla = apuestas_planilla - apuestas_reporte
-        solo_en_reporte = (apuestas_reporte - apuestas_planilla) - APUESTAS_IGNORAR_LAPLATA
+        solo_en_reporte = (apuestas_reporte - apuestas_planilla) - APUESTAS_IGNORAR_LAPLATA - codigos_con_all
 
         if solo_en_planilla:
             diferencias.append(

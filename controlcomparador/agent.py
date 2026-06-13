@@ -31,11 +31,12 @@ class AgenteComparacion:
         coincide, diferencias = comparar_pdf_y_reporte(
             ruta_pdf, ruta_reporte, apuestas_raw=apuestas,
         )
+        datos_reporte, _ = normalizar_reporte(ruta_reporte)
         return {
             "coincide": coincide,
             "diferencias": diferencias,
             "datos_pdf": normalizar_pdf(ruta_pdf, apuestas_raw=apuestas),
-            "datos_reporte": normalizar_reporte(ruta_reporte),
+            "datos_reporte": datos_reporte,
             "fecha_reporte": extraer_fecha_reporte(ruta_reporte),
             "tipo_pdf": "TELA OFICIAL" if es_tela_oficial(ruta_pdf) else "OFICIAL",
         }
@@ -127,9 +128,10 @@ class AgenteComparacion:
 
     def comparar_laplata(self, ruta_xls: str | Path, ruta_reporte: str | Path) -> dict:
         coincide, diferencias = comparar_planilla_con_reporte(ruta_xls, ruta_reporte)
+        datos_reporte, _ = normalizar_reporte(ruta_reporte)
         return {
             "coincide": coincide,
             "diferencias": diferencias,
             "datos_planilla": normalizar_planilla_laplata(ruta_xls),
-            "datos_reporte": normalizar_reporte(ruta_reporte),
+            "datos_reporte": datos_reporte,
         }

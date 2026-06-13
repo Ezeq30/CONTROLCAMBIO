@@ -14,8 +14,23 @@ from controlcomparador.config import (
     PATRON_DEFAULT,
     PATRON_CABALLO,
     MAPEO_RSM,
+    APUESTAS_PICK,
 )
 from controlcomparador.utils.money import parsear_monto_str
+
+
+def validar_pick_conflict(datos_reporte: dict[int, dict]) -> list[str]:
+    """Verifica que ninguna carrera tenga dos apuestas pick (TPL, QTN, QTP, CAD) juntas.
+    Estas apuestas son mutuamente excluyentes: solo una por carrera."""
+    errores: list[str] = []
+    for num_carrera in sorted(datos_reporte.keys()):
+        apuestas = datos_reporte[num_carrera].get("apuestas", {})
+        picks = [cod for cod in apuestas if cod in APUESTAS_PICK]
+        if len(picks) > 1:
+            errores.append(
+                f"Carrera {num_carrera}: apuestas pick conflictivas ({', '.join(picks)})"
+            )
+    return errores
 
 
 def expandir_race_map(race_map: str) -> list[int]:
@@ -59,7 +74,7 @@ def expandir_race_map(race_map: str) -> list[int]:
         return []
 
 
-def normalizar_reporte(ruta_reporte: str | Path) -> dict[int, dict]:
+def normalizar_reporte(ruta_reporte: str | Path) -> tuple[dict[int, dict], set[str]]:
     with open(ruta_reporte, "r", encoding="utf-8", errors="ignore") as f:
         contenido = f.read()
     resultado: dict[int, dict] = {}
@@ -106,6 +121,7 @@ def normalizar_reporte(ruta_reporte: str | Path) -> dict[int, dict]:
         i += 1
 
     valores_por_carrera: dict[int, dict[str, Optional[float]]] = {}
+    codigos_con_all: set[str] = set()
     scr_patron = re.compile(r"\bSCR\b", re.IGNORECASE)
 
     inicio_rsm = contenido.find("RSM TABLE")
@@ -134,8 +150,10 @@ def normalizar_reporte(ruta_reporte: str | Path) -> dict[int, dict]:
             codigo_apuesta = MAPEO_RSM.get(tipo_rsm)
             if not codigo_apuesta:
                 continue
-            if race_map.upper() == "ALL":
+            es_all = race_map.upper() == "ALL"
+            if es_all:
                 carreras = list(carreras_reales_reporte) if carreras_reales_reporte else expandir_race_map(race_map)
+                codigos_con_all.add(codigo_apuesta)
             else:
                 carreras = expandir_race_map(race_map)
             for carrera in carreras:
@@ -155,7 +173,7 @@ def normalizar_reporte(ruta_reporte: str | Path) -> dict[int, dict]:
             if v is not None:
                 pass
 
-    todas_las_carreras = set(caballos_por_carrera.keys()) | set(apuestas_por_carrera.keys())
+    todas_las_carreras = set(caballos_por_carrera.keys()) | set(apuestas_por_carrera.keys()) | set(valores_por_carrera.keys())
     for num_carrera in sorted(todas_las_carreras):
         resultado[num_carrera] = {
             "caballos": caballos_por_carrera.get(num_carrera, 0),
@@ -168,7 +186,10 @@ def normalizar_reporte(ruta_reporte: str | Path) -> dict[int, dict]:
                 resultado[num_carrera]["apuestas"][codigo] = valores_carrera[codigo]
             else:
                 resultado[num_carrera]["apuestas"][codigo] = None
-    return resultado
+        for codigo, valor in valores_carrera.items():
+            if codigo not in resultado[num_carrera]["apuestas"]:
+                resultado[num_carrera]["apuestas"][codigo] = valor
+    return resultado, codigos_con_all
 
 
 def normalizar_reporte_palermo(ruta_reporte: str | Path) -> tuple[dict[int, dict[str, Optional[float]]], set[str]]:

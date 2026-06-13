@@ -11,17 +11,17 @@ def _mock_planilla_con_datos():
 
 
 def _mock_reporte_con_datos():
-    return {
+    return ({
         1: {"caballos": 9, "apuestas": {"GAN": None, "SEG": None, "TER": None, "QTN": None, "EXA": 500.0, "TRI": 1200.0, "CUA": 5000.0}},
         2: {"caballos": 7, "apuestas": {"GAN": None, "SEG": None, "TER": None, "QTN": None, "EXA": 550.0, "TRI": 1300.0, "CUA": 5500.0}},
-    }
+    }, set())
 
 
 def _mock_reporte_sin_ignorados():
-    return {
+    return ({
         1: {"caballos": 9, "apuestas": {"EXA": 500.0, "TRI": 1200.0, "CUA": 5000.0}},
         2: {"caballos": 7, "apuestas": {"EXA": 550.0, "TRI": 1300.0, "CUA": 5500.0}},
-    }
+    }, set())
 
 
 class TestCompararPlanillaConReporte:
@@ -51,10 +51,10 @@ class TestCompararPlanillaConReporte:
     @patch("controlcomparador.comparators.laplata.normalizar_reporte")
     def test_detecta_diferencia_valor_exa(self, mock_reporte, mock_planilla):
         plan = _mock_planilla_con_datos()
-        rep = _mock_reporte_con_datos()
-        rep[1]["apuestas"]["EXA"] = 999.0
+        rep_dict, rep_all = _mock_reporte_con_datos()
+        rep_dict[1]["apuestas"]["EXA"] = 999.0
         mock_planilla.return_value = plan
-        mock_reporte.return_value = rep
+        mock_reporte.return_value = (rep_dict, rep_all)
         coincide, diferencias = comparar_planilla_con_reporte("xls", "reporte")
         assert coincide is False
         assert any("EXA" in d for d in diferencias)
@@ -63,10 +63,10 @@ class TestCompararPlanillaConReporte:
     @patch("controlcomparador.comparators.laplata.normalizar_reporte")
     def test_detecta_caballos_diferentes(self, mock_reporte, mock_planilla):
         plan = _mock_planilla_con_datos()
-        rep = _mock_reporte_con_datos()
-        rep[1]["caballos"] = 99
+        rep_dict, rep_all = _mock_reporte_con_datos()
+        rep_dict[1]["caballos"] = 99
         mock_planilla.return_value = plan
-        mock_reporte.return_value = rep
+        mock_reporte.return_value = (rep_dict, rep_all)
         coincide, diferencias = comparar_planilla_con_reporte("xls", "reporte")
         assert coincide is False
         assert any("caballos" in d for d in diferencias)
@@ -83,6 +83,6 @@ class TestCompararPlanillaConReporte:
     @patch("controlcomparador.comparators.laplata.normalizar_reporte")
     def test_reporte_vacio_retorna_falso(self, mock_reporte, mock_planilla):
         mock_planilla.return_value = _mock_planilla_con_datos()
-        mock_reporte.return_value = {}
+        mock_reporte.return_value = ({}, set())
         coincide, diferencias = comparar_planilla_con_reporte("xls", "reporte")
         assert coincide is False

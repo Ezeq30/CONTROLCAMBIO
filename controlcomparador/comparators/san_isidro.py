@@ -7,7 +7,7 @@ from typing import Optional
 
 from controlcomparador.config import APUESTAS_SIN_COMPARAR_VALOR
 from controlcomparador.parsers.pdf import normalizar_pdf
-from controlcomparador.parsers.report import normalizar_reporte
+from controlcomparador.parsers.report import normalizar_reporte, validar_pick_conflict
 
 
 def comparar_pdf_y_reporte(
@@ -16,8 +16,9 @@ def comparar_pdf_y_reporte(
     apuestas_raw: Optional[list[list]] = None,
 ) -> tuple[bool, list[str]]:
     datos_pdf = normalizar_pdf(ruta_pdf, apuestas_raw=apuestas_raw)
-    datos_reporte = normalizar_reporte(ruta_reporte)
+    datos_reporte, codigos_con_all = normalizar_reporte(ruta_reporte)
     diferencias: list[str] = []
+    diferencias.extend(validar_pick_conflict(datos_reporte))
     todas_las_carreras = set(datos_pdf.keys()) | set(datos_reporte.keys())
 
     for num_carrera in sorted(todas_las_carreras):
@@ -41,7 +42,7 @@ def comparar_pdf_y_reporte(
         apuestas_pdf = set(datos_pdf[num_carrera]["apuestas"].keys())
         apuestas_reporte = set(datos_reporte[num_carrera]["apuestas"].keys())
         solo_en_pdf = apuestas_pdf - apuestas_reporte
-        solo_en_reporte = apuestas_reporte - apuestas_pdf
+        solo_en_reporte = (apuestas_reporte - apuestas_pdf) - codigos_con_all
 
         if solo_en_pdf:
             diferencias.append(

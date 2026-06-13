@@ -41,42 +41,42 @@ class TestExpandirRaceMap:
 class TestNormalizarReporte:
 
     def test_parsea_carreras_y_apuestas(self, ruta_reporte_ejemplo):
-        resultado = normalizar_reporte(ruta_reporte_ejemplo)
+        resultado, _ = normalizar_reporte(ruta_reporte_ejemplo)
         assert 1 in resultado
         assert 2 in resultado
         assert "caballos" in resultado[1]
         assert "apuestas" in resultado[1]
 
     def test_caballo_key_existe(self, ruta_reporte_ejemplo):
-        resultado = normalizar_reporte(ruta_reporte_ejemplo)
+        resultado, _ = normalizar_reporte(ruta_reporte_ejemplo)
         assert "caballos" in resultado[1]
 
     def test_apuestas_carrera_1_tiene_exa(self, ruta_reporte_ejemplo):
-        resultado = normalizar_reporte(ruta_reporte_ejemplo)
+        resultado, _ = normalizar_reporte(ruta_reporte_ejemplo)
         assert "EXA" in resultado[1]["apuestas"]
 
     def test_valor_exa_carrera_1(self, ruta_reporte_ejemplo):
-        resultado = normalizar_reporte(ruta_reporte_ejemplo)
+        resultado, _ = normalizar_reporte(ruta_reporte_ejemplo)
         assert resultado[1]["apuestas"]["EXA"] == 500.0
 
     def test_valor_tri_carrera_1(self, ruta_reporte_ejemplo):
-        resultado = normalizar_reporte(ruta_reporte_ejemplo)
+        resultado, _ = normalizar_reporte(ruta_reporte_ejemplo)
         assert resultado[1]["apuestas"]["TRI"] == 1200.0
 
     def test_valor_exa_carrera_2(self, ruta_reporte_ejemplo):
-        resultado = normalizar_reporte(ruta_reporte_ejemplo)
+        resultado, _ = normalizar_reporte(ruta_reporte_ejemplo)
         assert resultado[2]["apuestas"]["EXA"] == 550.0
 
     def test_gan_sin_valor_en_rsm(self, ruta_reporte_ejemplo):
-        resultado = normalizar_reporte(ruta_reporte_ejemplo)
+        resultado, _ = normalizar_reporte(ruta_reporte_ejemplo)
         assert resultado[1]["apuestas"].get("GAN") is None
 
     def test_seg_sin_valor_en_rsm(self, ruta_reporte_ejemplo):
-        resultado = normalizar_reporte(ruta_reporte_ejemplo)
+        resultado, _ = normalizar_reporte(ruta_reporte_ejemplo)
         assert resultado[1]["apuestas"].get("SEG") is None
 
     def test_ter_sin_valor_en_rsm(self, ruta_reporte_ejemplo):
-        resultado = normalizar_reporte(ruta_reporte_ejemplo)
+        resultado, _ = normalizar_reporte(ruta_reporte_ejemplo)
         assert resultado[1]["apuestas"].get("TER") is None
 
 

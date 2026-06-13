@@ -11,7 +11,7 @@ from rich import box
 from datetime import datetime
 from pathlib import Path
 
-from controlcomparador.config import ORDEN_APUESTAS, SYM_OK, SYM_FAIL
+from controlcomparador.config import ORDEN_APUESTAS, SYM_OK, SYM_FAIL, APUESTAS_PICK
 from controlcomparador.parsers.pdf import extraer_info_reunion_tela
 from controlcomparador.ui.console import console
 
@@ -258,6 +258,10 @@ def _validar_carreras_tela(datos: dict[int, dict]) -> dict[int, tuple[int, str]]
 
         if "TRI" in apuestas and "CUA" in apuestas:
             msgs.append("TRI y CUA no pueden estar juntos")
+
+        picks = [cod for cod in apuestas if cod in APUESTAS_PICK]
+        if len(picks) > 1:
+            msgs.append(f"apuestas pick conflictivas ({', '.join(picks)})")
 
         mensaje = "OK" if not msgs else " / ".join(msgs)
         resultados[num_carrera] = (cab, mensaje)
