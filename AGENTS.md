@@ -55,6 +55,10 @@ pyinstaller ControlComparador.spec
 
 ### Módulos clave y sus funciones
 
+#### parsers/report.py - RSM TABLE TXT
+- `normalizar_reporte(ruta)` → `(dict, set)` — retorna tupla `(valores_por_carrera, codigos_con_all)` como `normalizar_reporte_palermo()`. Incluye apuestas que vienen solo del RSM TABLE (no solo del header). `codigos_con_all` trackea códigos con `ALL` race_map para excluirlos de `solo_en_reporte`.
+- `validar_pick_conflict(datos_reporte)` — verifica que ninguna carrera tenga dos apuestas pick (TPL/QTN/QTP/CAD) juntas, ya que son mutuamente excluyentes.
+
 #### parsers/pdf.py - Tela Oficial
 - `es_tela_oficial(ruta)` — detecta por "Programa Depurado" en texto
 - `_obtener_apuestas_tela_oficial(ruta)` — extrae apuestas anclado por líneas `APUESTAS:` (no por `Premio`), soporta "Clásico" como header de carrera
@@ -63,6 +67,11 @@ pyinstaller ControlComparador.spec
   - **`APUESTAS_SIN_COMPARAR_VALOR`**: GAN/SEG/TER se extraen con valor vacío (solo presencia)
 - `obtener_apuestas_por_carrera(ruta)` — auto-detecta: tela oficial → `_obtener_apuestas_tela_oficial()`, otro → `_obtener_apuestas_programa_oficial()`
 - `extraer_info_reunion_tela(ruta)` — extrae `{"reunion": "54", "fecha": "14/06/2026", "hipodromo": "..."}` desde página 1 del PDF para el HTML export
+
+#### config.py
+- `APUESTAS_SIN_COMPARAR_VALOR = {"GAN", "SEG", "TER"}` — códigos que solo se comparan en existencia
+- `APUESTAS_PICK = {"TPL", "QTN", "QTP", "CAD"}` — apuestas pick mutuamente excluyentes por carrera
+- `APUESTAS_IGNORAR_LAPLATA = {"GAN", "SEG", "TER", "QTN"}` — ignoradas del lado reporte en La Plata
 
 #### detector.py
 - `_clasificar_pdf(ruta)` — detecta "Programa Depurado" → `"san_isidro"` (tela oficial usa mismo comparador)
@@ -80,7 +89,7 @@ pyinstaller ControlComparador.spec
 - `imprimir_resumen_tela(datos, ruta)` — muestra archivo + BASES POR APUESTA + VALIDACIONES (Rich tables)
 - `exportar_resumen_html(datos, ruta_pdf, ruta_salida)` — genera HTML standalone con marco verde, columnas 50/20/30%, width fit-content. Header "Reunión X — fecha — Hipódromo". Abre navegador automáticamente
 - `_mostrar_bases_por_apuesta(datos)` — tabla Rich agrupando apuestas por código+valor con formato "ALL" o rangos (1-8,10-13)
-- `_validar_carreras_tela(datos)` — valida reglas: EXA ↔ IMP según caballos, TRI ↔ CUA exclusión, etc.
+- `_validar_carreras_tela(datos)` — valida reglas: EXA ↔ IMP según caballos, TRI ↔ CUA exclusión, pick conflict (TPL/QTN/QTP/CAD), etc.
 - `_format_carreras_list(carreras, total)` — "ALL", "1-3,5,7-9"
 
 ### Reglas de negocio importantes
@@ -90,6 +99,22 @@ pyinstaller ControlComparador.spec
 - **San Isidro:** GAN, SEG, TER solo se comparan en existencia, no en valor
 - **Palermo:** Si EXA/TRI aparece UNA sola vez en el PDF, se expande a todas las carreras (regla "ALL si única línea")
 - **Posting:** El segundo archivo TXT sobrescribe al primero en caso de conflicto
+- **Apuestas Pick:** TPL, QTN, QTP y CAD son mutuamente excluyentes por carrera. `validar_pick_conflict()` en `parsers/report.py` detecta >1 pick en la misma carrera.
+- **ALL race_map en comparación presencia:** Cuando el RSM TABLE usa `ALL` para un código (ej. `ALL --- EXA 2000`), el código se agrega a `codigos_con_all` y se excluye del check `solo_en_reporte`. Aplica en San Isidro, La Plata y Palermo oficial.
+
+### Comparadores
+
+#### comparators/san_isidro.py
+- `comparar_pdf_y_reporte()` — desempaqueta `normalizar_reporte()` como `(dict, set)`. Excluye `codigos_con_all` de `solo_en_reporte` (línea 45). Integra `validar_pick_conflict()`.
+
+#### comparators/palermo.py
+- `comparar_oficial_palermo_con_reporte()` — excluye `codigos_con_all` de `solo_en_reporte`.
+
+#### comparators/laplata.py
+- `comparar_planilla_con_reporte()` — desempaqueta `normalizar_reporte()` como `(dict, set)`. Excluye `codigos_con_all` y `APUESTAS_IGNORAR_LAPLATA` de `solo_en_reporte`. Integra `validar_pick_conflict()`.
+
+#### comparators/posting.py
+- `comparar_posting_con_reporte()` — excluye `codigos_con_all` de ambos lados.
 
 ### Bugs fixes conocidos
 
@@ -97,6 +122,15 @@ pyinstaller ControlComparador.spec
 - `normalizar_reporte_palermo()` retorna tupla `(valores_por_carrera, codigos_con_all)`
 - `comparar_oficial_palermo_con_reporte()` excluye `codigos_con_all` de `solo_en_reporte`
 - `comparar_posting_con_reporte()` excluye `codigos_con_all` de ambos lados
+
+**Falso positivo EXA/TRI con ALL race_map en San Isidro / La Plata:**
+- `normalizar_reporte()` ahora retorna `(dict, set)` como Palermo
+- `comparar_pdf_y_reporte()` excluye `codigos_con_all` de `solo_en_reporte`
+- `comparar_planilla_con_reporte()` excluye `codigos_con_all` de `solo_en_reporte`
+
+**Detección de apuestas pick conflictivas (TPL/QTN/QTP/CAD):**
+- `validar_pick_conflict()` en `parsers/report.py` chequea que ninguna carrera tenga dos o más picks
+- Integrado en `comparar_pdf_y_reporte()`, `comparar_planilla_con_reporte()` y `_validar_carreras_tela()`
 
 ### Próximas mejoras planeadas
 
