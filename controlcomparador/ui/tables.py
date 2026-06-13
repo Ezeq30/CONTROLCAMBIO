@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Optional
 
 from rich.table import Table
-from rich.panel import Panel
+
 from rich import box
 
 from controlcomparador.config import ORDEN_APUESTAS, SYM_OK, SYM_FAIL
@@ -39,58 +39,24 @@ def _estado_apuesta(v1: Optional[float], v2: Optional[float], etiq1: str, etiq2:
     return f"[red]{SYM_FAIL}[/red]"
 
 
-def _tabla_comparacion(
-    titulo: str,
-    carreras: list[int],
-    get_datos_carrera,
-    col1_nombre: str,
-    tiene_caballos: bool = True,
-) -> None:
-    console.rule(f"[bold]{titulo}[/bold]")
-    t = Table(box=box.SIMPLE, header_style="bold")
-    t.add_column("Carrera", style="yellow", width=6)
-    if tiene_caballos:
-        t.add_column("Caballos", justify="center", width=8)
-    t.add_column("Apuesta", style="cyan", width=8)
-    t.add_column(col1_nombre, justify="right", width=10)
-    t.add_column("Reporte", justify="right", width=10)
-    t.add_column("Estado", justify="center", width=10)
-
-    for num_carrera in carreras:
-        d1, d2, cab_str = get_datos_carrera(num_carrera)
-        codigos = _ordenar_codigos(set(d1.keys()) | set(d2.keys()))
-        for idx, cod in enumerate(codigos):
-            v1 = d1.get(cod)
-            v2 = d2.get(cod)
-            estado = _estado_apuesta(v1, v2, col1_nombre.lower(), "reporte")
-            carrera_str = str(num_carrera) if idx == 0 else ""
-            cab_show = cab_str if (idx == 0 and tiene_caballos) else ""
-            row = [carrera_str]
-            if tiene_caballos:
-                row.append(cab_show)
-            row.extend([cod, formato_valor(v1), formato_valor(v2), estado])
-            t.add_row(*row)
-
-    console.print(t)
-    console.print()
-
-
 def imprimir_tabla_san_isidro(
     datos_pdf: dict,
     datos_reporte: dict,
     datos_posting: Optional[tuple[dict, set[str]]] = None,
     fecha_reporte: Optional[str] = None,
+    tipo_pdf: Optional[str] = None,
 ) -> None:
     valores_posting = datos_posting[0] if datos_posting else {}
     if fecha_reporte:
         console.print(f"[info]Fecha del reporte: {fecha_reporte}[/info]")
 
-    console.rule("[bold]COMPARACION OFICIAL vs REPORTE[/bold]")
+    label_pdf = tipo_pdf or "OFICIAL"
+    console.rule(f"[bold]COMPARACION {label_pdf} vs REPORTE[/bold]")
     t = Table(box=box.SIMPLE, header_style="bold")
     t.add_column("Carrera", style="yellow", width=6)
     t.add_column("Caballos", justify="center", width=8)
     t.add_column("Apuesta", style="cyan", width=8)
-    t.add_column("OFICIAL", justify="right", width=10)
+    t.add_column(label_pdf, justify="right", width=10)
     t.add_column("Reporte", justify="right", width=10)
     if datos_posting:
         t.add_column("Posting", justify="right", width=10)
@@ -111,7 +77,7 @@ def imprimir_tabla_san_isidro(
         for idx, cod in enumerate(todos_codigos):
             v_pdf = pdf_ap.get(cod)
             v_rep = rep_ap.get(cod)
-            estado = _estado_apuesta(v_pdf, v_rep, "oficial", "reporte")
+            estado = _estado_apuesta(v_pdf, v_rep, label_pdf.lower(), "reporte")
             carrera_str = str(num_carrera) if idx == 0 else ""
             cab_show = cab_str if idx == 0 else ""
             row = [carrera_str, cab_show, cod, formato_valor(v_pdf), formato_valor(v_rep)]
@@ -260,6 +226,4 @@ def mostrar_resumen_comparacion(coincide: bool, diferencias: list[str], titulo: 
         console.print()
 
 
-def mostrar_panel_info(titulo: str, contenido: str, estilo: str = "info") -> None:
-    panel = Panel(contenido, title=titulo, border_style=estilo)
-    console.print(panel)
+

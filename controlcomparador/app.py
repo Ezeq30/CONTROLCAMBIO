@@ -57,8 +57,9 @@ def san_isidro(
         with console.status("[bold blue]Comparando Posting Prices...[/bold blue]"):
             resultado_posting = _agente.comparar_posting(posting, reporte)
             datos_posting = resultado_posting["datos_posting"]
-    imprimir_tabla_san_isidro(resultado["datos_pdf"], resultado["datos_reporte"], datos_posting, resultado.get("fecha_reporte"))
-    mostrar_resumen_comparacion(resultado["coincide"], resultado["diferencias"], "OFICIAL vs REPORTE")
+    imprimir_tabla_san_isidro(resultado["datos_pdf"], resultado["datos_reporte"], datos_posting, resultado.get("fecha_reporte"), resultado.get("tipo_pdf"))
+    label = f"{resultado.get('tipo_pdf', 'OFICIAL')} vs REPORTE"
+    mostrar_resumen_comparacion(resultado["coincide"], resultado["diferencias"], label)
     if posting:
         mostrar_resumen_comparacion(resultado_posting["coincide"], resultado_posting["diferencias"], "POSTING vs REPORTE")
 
@@ -177,8 +178,9 @@ def ejecutar_auto_comparacion(seleccion: str, deteccion: dict) -> None:
             with console.status("[bold blue]Comparando Posting Prices...[/bold blue]"):
                 resultado_posting = _agente.comparar_posting(posting, reporte)
                 datos_posting_auto = resultado_posting["datos_posting"]
-        imprimir_tabla_san_isidro(resultado["datos_pdf"], resultado["datos_reporte"], datos_posting_auto, resultado.get("fecha_reporte"))
-        mostrar_resumen_comparacion(resultado["coincide"], resultado["diferencias"], "OFICIAL vs REPORTE")
+        imprimir_tabla_san_isidro(resultado["datos_pdf"], resultado["datos_reporte"], datos_posting_auto, resultado.get("fecha_reporte"), resultado.get("tipo_pdf"))
+        label = f"{resultado.get('tipo_pdf', 'OFICIAL')} vs REPORTE"
+        mostrar_resumen_comparacion(resultado["coincide"], resultado["diferencias"], label)
         if posting:
             mostrar_resumen_comparacion(resultado_posting["coincide"], resultado_posting["diferencias"], "POSTING vs REPORTE")
 
@@ -299,7 +301,7 @@ def _menu_san_isidro_interactivo():
             "COMPARAR ARCHIVOS - SAN ISIDRO",
             archivos,
             [
-                ("1", "Seleccionar programa oficial (PDF)"),
+                ("1", "Seleccionar programa oficial o tela (PDF)"),
                 ("2", "Seleccionar reporte (TXT)"),
                 ("3", "Seleccionar Posting Prices (TXT)"),
                 ("4", "COMPARAR ARCHIVOS"),
@@ -308,7 +310,7 @@ def _menu_san_isidro_interactivo():
         )
 
         if op == "1":
-            ruta = seleccionar_archivo("Ruta del PDF: ", {".pdf"}, "programa oficial (PDF)")
+            ruta = seleccionar_archivo("Ruta del PDF: ", {".pdf"}, "programa oficial o tela (PDF)")
             if ruta:
                 ruta_pdf = ruta
         elif op == "2":
@@ -338,8 +340,9 @@ def _menu_san_isidro_interactivo():
                 with console.status("[bold blue]Comparando Posting Prices...[/bold blue]"):
                     res_p = _agente.comparar_posting(rutas_posting, ruta_reporte)
                     datos_posting_menu = res_p["datos_posting"]
-            imprimir_tabla_san_isidro(resultado["datos_pdf"], resultado["datos_reporte"], datos_posting_menu, resultado.get("fecha_reporte"))
-            mostrar_resumen_comparacion(resultado["coincide"], resultado["diferencias"], "OFICIAL vs REPORTE")
+            imprimir_tabla_san_isidro(resultado["datos_pdf"], resultado["datos_reporte"], datos_posting_menu, resultado.get("fecha_reporte"), resultado.get("tipo_pdf"))
+            label = f"{resultado.get('tipo_pdf', 'OFICIAL')} vs REPORTE"
+            mostrar_resumen_comparacion(resultado["coincide"], resultado["diferencias"], label)
             if rutas_posting:
                 mostrar_resumen_comparacion(res_p["coincide"], res_p["diferencias"], "POSTING vs REPORTE")
             Prompt.ask("[dim]Enter para continuar...[/dim]", default="")

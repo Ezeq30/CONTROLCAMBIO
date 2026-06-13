@@ -12,6 +12,7 @@ from controlcomparador.comparators.posting import comparar_posting_con_reporte
 from controlcomparador.parsers.pdf import (
     obtener_apuestas_por_carrera,
     normalizar_pdf,
+    es_tela_oficial,
     leer_palermo_desde_pdf,
     extraer_apuestas_desde_oficial_palermo,
 )
@@ -36,6 +37,7 @@ class AgenteComparacion:
             "datos_pdf": normalizar_pdf(ruta_pdf, apuestas_raw=apuestas),
             "datos_reporte": normalizar_reporte(ruta_reporte),
             "fecha_reporte": extraer_fecha_reporte(ruta_reporte),
+            "tipo_pdf": "TELA OFICIAL" if es_tela_oficial(ruta_pdf) else "OFICIAL",
         }
 
     def comparar_palermo(

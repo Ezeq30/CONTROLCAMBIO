@@ -21,6 +21,7 @@ from controlcomparador.config import (
     PATRON_CARRERA_OFICIAL,
     MAPEO_ABREVIATURAS,
     CODIGOS_APUESTA_VALIDOS,
+    APUESTAS_SIN_COMPARAR_VALOR,
 )
 from controlcomparador.utils.money import parsear_monto_str
 
@@ -101,7 +102,7 @@ def obtener_caballos_por_carrera(ruta_pdf: str | Path) -> dict[int, int]:
     return resultado
 
 
-def obtener_apuestas_por_carrera(ruta_pdf: str | Path) -> list[list]:
+def _obtener_apuestas_programa_oficial(ruta_pdf: str | Path) -> list[list]:
     import pypdf
     reader = pypdf.PdfReader(ruta_pdf)
     resultado = []
@@ -157,6 +158,163 @@ def obtener_apuestas_por_carrera(ruta_pdf: str | Path) -> list[list]:
                 if apuesta_cod in CODIGOS_APUESTA_VALIDOS:
                     resultado.append([num_carrera, cantidad_caballos, apuesta_cod, valor])
     return resultado
+
+
+# --- Tela Oficial San Isidro PDF ---
+
+PATRON_BET_VALUE = re.compile(r"(.+?)\s*\$\s*([\d.,]+)")
+PATRON_EXTRA_BETS = re.compile(
+    r"(Cuaterna|Triplo|Quintuplo|Cadena|Doble|Imperfecta|Cuatrifecta)", re.IGNORECASE
+)
+PATRON_CABALLO_TELA = re.compile(r"\s+(\d+)\s{2,}(?:[A-Z]|')")
+
+
+def es_tela_oficial(ruta_pdf: str | Path) -> bool:
+    """Detecta si un PDF es de formato 'Tela Oficial' (Programa Depurado)."""
+    import pypdf
+    try:
+        reader = pypdf.PdfReader(ruta_pdf)
+        if not reader.pages:
+            return False
+        texto = (reader.pages[0].extract_text() or "")
+        return "Programa Depurado" in texto
+    except Exception:
+        return False
+
+
+def _parsear_bets_tela(texto: str) -> list[tuple[str, str]]:
+    """Parsea linea de apuestas formato tela: 'Nombre1 $ Valor, Nombre2 $ Valor'.
+    Retorna [(codigo, valor_str), ...]."""
+    resultado: list[tuple[str, str]] = []
+    partes = [p.strip() for p in texto.split(",") if p.strip()]
+    for p in partes:
+        m_val = re.search(r"\$\s*([\d.,]+)", p)
+        if m_val:
+            nombre = re.sub(r"\$\s*[\d.,]+", "", p).strip().rstrip(",")
+            valor = m_val.group(1)
+        else:
+            nombre = p
+            valor = ""
+        if not nombre:
+            continue
+        if es_apuesta_excluida(nombre):
+            continue
+        codigo = abreviar_apuesta(normalizar_nombre_apuesta(nombre))
+        if codigo and codigo in CODIGOS_APUESTA_VALIDOS:
+            if codigo in APUESTAS_SIN_COMPARAR_VALOR:
+                resultado.append((codigo, ""))
+            else:
+                resultado.append((codigo, valor))
+    return resultado
+
+
+def _obtener_apuestas_tela_oficial(ruta_pdf: str | Path) -> list[list]:
+    import pypdf
+    reader = pypdf.PdfReader(ruta_pdf)
+    resultado: list[list] = []
+
+    for pagina in reader.pages:
+        texto = pagina.extract_text() or ""
+        lineas = texto.split("\n")
+        if not lineas:
+            continue
+
+        # Find APUESTAS lines (each marks a unique race)
+        apuestas_indices = [
+            i for i, l in enumerate(lineas)
+            if l.strip().upper().startswith("APUESTAS:")
+        ]
+        if not apuestas_indices:
+            continue
+
+        for idx, start_idx in enumerate(apuestas_indices):
+            end_idx = apuestas_indices[idx + 1] if idx + 1 < len(apuestas_indices) else len(lineas)
+            race_lines = lineas[start_idx:end_idx]
+
+            # --- APUESTAS base ---
+            texto_apuestas = ""
+            for l in race_lines:
+                s = l.strip()
+                if s.upper().startswith("APUESTAS:"):
+                    texto_apuestas = s[len("APUESTAS:"):].strip()
+                    break
+
+            # --- Extra bets (despues de Bolsa Total, antes del nro de carrera) ---
+            extra_bets: list[str] = []
+            found_bolsa = False
+            for l in race_lines:
+                s = l.strip()
+                if "Bolsa Total:" in s:
+                    found_bolsa = True
+                    continue
+                if found_bolsa:
+                    if s.isdigit() and 1 <= int(s) <= 30:
+                        break
+                    if "CHAQUETILLAS" in s:
+                        break
+                    if PATRON_EXTRA_BETS.search(s) and "$" in s:
+                        if s not in extra_bets:
+                            extra_bets.append(s)
+
+            # --- Nro de carrera ---
+            num_carrera = None
+            for l in race_lines:
+                s = l.strip()
+                if s.isdigit() and 1 <= int(s) <= 30:
+                    num_carrera = int(s)
+                    break
+            if num_carrera is None:
+                continue
+
+            # --- Caballos ---
+            horse_nums: set[int] = set()
+            in_horse_block = False
+            for l in race_lines:
+                s = l.strip()
+                if "CHAQUETILLAS" in s:
+                    in_horse_block = False
+                    continue
+                if re.search(r"\bCABALLO\b", s, re.IGNORECASE) and "JOCKEY" in s.upper():
+                    in_horse_block = True
+                    continue
+                if in_horse_block:
+                    if not s or s.startswith("Bolsa") or s.startswith("Total") or s.startswith("*"):
+                        continue
+                    if s.isdigit():
+                        continue
+                    if re.match(r"\d{1,2}:\d{2}", s):
+                        continue
+                    m = PATRON_CABALLO_TELA.search(s)
+                    if m:
+                        num = int(m.group(1))
+                        if 1 <= num <= 30:
+                            horse_nums.add(num)
+
+            num_caballos = len(horse_nums) if horse_nums else 0
+
+            # --- Combinar todas las apuestas ---
+            apuestas_vistas: set[str] = set()
+
+            if texto_apuestas:
+                for cod, val in _parsear_bets_tela(texto_apuestas):
+                    if cod not in apuestas_vistas:
+                        resultado.append([num_carrera, num_caballos, cod, val])
+                        apuestas_vistas.add(cod)
+
+            for eb in extra_bets:
+                for cod, val in _parsear_bets_tela(eb):
+                    if cod not in apuestas_vistas:
+                        resultado.append([num_carrera, num_caballos, cod, val])
+                        apuestas_vistas.add(cod)
+
+    return resultado
+
+
+def obtener_apuestas_por_carrera(ruta_pdf: str | Path) -> list[list]:
+    """Auto-detecta el formato del PDF y extrae las apuestas."""
+    if es_tela_oficial(ruta_pdf):
+        return _obtener_apuestas_tela_oficial(ruta_pdf)
+    return _obtener_apuestas_programa_oficial(ruta_pdf)
 
 
 def normalizar_desde_lista_apuestas(apuestas_raw: list[list]) -> dict[int, dict]:

@@ -110,6 +110,9 @@ PATRON_CARRERA_OFICIAL = re.compile(r"^\s*(\d+)\s*[^0-9A-Za-z]?\s*Carrera\b", re
 # Patrón CARD DEFAULT MINIMUMS
 PATRON_DEFAULT = re.compile(r"(GAN|SEG|TER|EXA|IMP|TRI|DOB|TPL|QTN|QTP|CAD|CUA)\s+([\d.,]+)")
 
+# Patrón para detectar PDF Tela Oficial San Isidro
+PATRON_PROGRAMA_DEPURADO = re.compile(r"Programa\s+Depurado", re.IGNORECASE)
+
 # Símbolos de la UI (compatibles con Windows cp1252)
 SYM_OK = "[OK]"
 SYM_FAIL = "[ERR]"
