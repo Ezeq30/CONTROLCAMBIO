@@ -326,36 +326,10 @@ def _mostrar_bases_por_apuesta(datos: dict[int, dict]) -> None:
 
 
 def imprimir_resumen_tela(datos: dict[int, dict], ruta: str) -> None:
-    total_carreras = len(datos)
-    total_apuestas = sum(len(d.get("apuestas", {})) for d in datos.values())
-
-    console.rule("[bold]RESUMEN TELA OFICIAL[/bold]")
     console.print(f"  [dim]Archivo:[/dim] {ruta}")
-    console.print(f"  [cyan]Carreras:[/cyan] {total_carreras}  |  [cyan]Apuestas:[/cyan] {total_apuestas}\n")
-
-    t = Table(box=box.SIMPLE, header_style="bold")
-    t.add_column("Carrera", style="yellow", width=6)
-    t.add_column("Caballos", justify="center", width=8)
-    t.add_column("Apuesta", style="cyan", width=8)
-    t.add_column("Valor", justify="right", width=10)
-
-    for num_carrera in sorted(datos.keys()):
-        d = datos[num_carrera]
-        cab = d.get("caballos", 0)
-        apuestas = d.get("apuestas", {})
-        codigos = _ordenar_codigos(set(apuestas.keys()))
-        for idx, cod in enumerate(codigos):
-            val = apuestas.get(cod)
-            carrera_str = str(num_carrera) if idx == 0 else ""
-            cab_show = str(cab) if idx == 0 else ""
-            t.add_row(carrera_str, cab_show, cod, formato_valor(val))
-
-    console.print(t)
-    console.print()
-
+    _mostrar_bases_por_apuesta(datos)
     warnings = _validar_apuestas_tela(datos)
     _mostrar_validaciones(warnings)
-    _mostrar_bases_por_apuesta(datos)
 
 
 def mostrar_resumen_comparacion(coincide: bool, diferencias: list[str], titulo: str = "COMPARACION") -> None:
