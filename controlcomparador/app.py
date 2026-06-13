@@ -366,6 +366,9 @@ def _resumen_tela_interactivo():
     with console.status("[bold blue]Analizando tela oficial...[/bold blue]"):
         apuestas_raw = obtener_apuestas_por_carrera(ruta)
         datos = normalizar_desde_lista_apuestas(apuestas_raw)
+    limpiar_pantalla()
+    console.rule("[bold]RESUMEN TELA OFICIAL[/bold]")
+    console.print()
     imprimir_resumen_tela(datos, ruta)
     Prompt.ask("[dim]Enter para continuar...[/dim]", default="")
 

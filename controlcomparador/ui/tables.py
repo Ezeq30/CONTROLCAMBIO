@@ -216,61 +216,64 @@ def imprimir_tabla_posting_vs_reporte(
     console.print()
 
 
-def _validar_apuestas_tela(datos: dict[int, dict]) -> list[tuple[int, int, str]]:
-    warnings: list[tuple[int, int, str]] = []
+def _validar_carreras_tela(datos: dict[int, dict]) -> dict[int, tuple[int, str]]:
+    """Valida cada carrera y retorna dict {carrera: (caballos, mensaje)}.
+    mensaje = 'OK' o uno o mas errores concatenados."""
+    resultados: dict[int, tuple[int, str]] = {}
     for num_carrera in sorted(datos.keys()):
         d = datos[num_carrera]
         cab = d.get("caballos", 0)
         apuestas = set(d.get("apuestas", {}).keys())
+        msgs: list[str] = []
 
         if cab < 8 and "TER" in apuestas:
-            warnings.append((num_carrera, cab, "TER no debería estar"))
+            msgs.append("TER no debería estar")
 
         if cab >= 12:
             if "IMP" not in apuestas:
-                warnings.append((num_carrera, cab, "IMP debería estar"))
+                msgs.append("IMP debería estar")
             if "EXA" in apuestas:
-                warnings.append((num_carrera, cab, "EXA no debería estar"))
+                msgs.append("EXA no debería estar")
 
         if cab <= 11:
             if "EXA" not in apuestas:
-                warnings.append((num_carrera, cab, "EXA debería estar"))
+                msgs.append("EXA debería estar")
             if "IMP" in apuestas:
-                warnings.append((num_carrera, cab, "IMP no debería estar"))
+                msgs.append("IMP no debería estar")
 
         if cab == 4:
             if "SEG" in apuestas:
-                warnings.append((num_carrera, cab, "SEG no debería estar"))
+                msgs.append("SEG no debería estar")
             if "TRI" in apuestas:
-                warnings.append((num_carrera, cab, "TRI no debería estar"))
+                msgs.append("TRI no debería estar")
             if "CUA" in apuestas:
-                warnings.append((num_carrera, cab, "CUA no debería estar"))
+                msgs.append("CUA no debería estar")
 
         if "EXA" in apuestas and "IMP" in apuestas:
-            warnings.append((num_carrera, cab, "EXA e IMP no pueden estar juntos"))
+            msgs.append("EXA e IMP no pueden estar juntos")
 
         if "TRI" in apuestas and "CUA" in apuestas:
-            warnings.append((num_carrera, cab, "TRI y CUA no pueden estar juntos"))
+            msgs.append("TRI y CUA no pueden estar juntos")
 
-    return warnings
+        mensaje = "OK" if not msgs else " / ".join(msgs)
+        resultados[num_carrera] = (cab, mensaje)
+
+    return resultados
 
 
-def _mostrar_validaciones(warnings: list[tuple[int, int, str]]) -> None:
-    if not warnings:
-        console.print("[green]OK[/green]\n")
-        return
-
+def _mostrar_validaciones(resultados: dict[int, tuple[int, str]]) -> None:
     t = Table(box=box.SIMPLE, header_style="bold", title="[bold]VALIDACIONES[/bold]")
     t.add_column("Carrera", style="yellow", width=6)
     t.add_column("Caballos", justify="center", width=8)
     t.add_column("Observación", width=60)
 
-    grouped: dict[tuple[int, int], list[str]] = {}
-    for num, cab, msg in warnings:
-        grouped.setdefault((num, cab), []).append(msg)
-
-    for (num, cab), msgs in sorted(grouped.items()):
-        t.add_row(str(num), str(cab), " / ".join(msgs))
+    for num_carrera in sorted(resultados.keys()):
+        cab, mensaje = resultados[num_carrera]
+        if mensaje == "OK":
+            estilo = f"[green]{mensaje}[/green]"
+        else:
+            estilo = f"[yellow]{mensaje}[/yellow]"
+        t.add_row(str(num_carrera), str(cab), estilo)
 
     console.print(t)
     console.print()
@@ -328,8 +331,8 @@ def _mostrar_bases_por_apuesta(datos: dict[int, dict]) -> None:
 def imprimir_resumen_tela(datos: dict[int, dict], ruta: str) -> None:
     console.print(f"  [dim]Archivo:[/dim] {ruta}")
     _mostrar_bases_por_apuesta(datos)
-    warnings = _validar_apuestas_tela(datos)
-    _mostrar_validaciones(warnings)
+    resultados = _validar_carreras_tela(datos)
+    _mostrar_validaciones(resultados)
 
 
 def mostrar_resumen_comparacion(coincide: bool, diferencias: list[str], titulo: str = "COMPARACION") -> None:
