@@ -8,7 +8,11 @@ from rich.table import Table
 
 from rich import box
 
+from datetime import datetime
+from pathlib import Path
+
 from controlcomparador.config import ORDEN_APUESTAS, SYM_OK, SYM_FAIL
+from controlcomparador.parsers.pdf import extraer_info_reunion_tela
 from controlcomparador.ui.console import console
 
 
@@ -333,6 +337,121 @@ def imprimir_resumen_tela(datos: dict[int, dict], ruta: str) -> None:
     _mostrar_bases_por_apuesta(datos)
     resultados = _validar_carreras_tela(datos)
     _mostrar_validaciones(resultados)
+
+
+def exportar_resumen_html(datos: dict[int, dict], ruta_pdf: str | Path, ruta_salida: str | Path) -> None:
+    info = extraer_info_reunion_tela(ruta_pdf)
+    grupos: dict[tuple[str, float | None], list[int]] = {}
+    for num_carrera in sorted(datos.keys()):
+        d = datos[num_carrera]
+        apuestas = d.get("apuestas", {})
+        for cod, val in apuestas.items():
+            if cod in ("GAN", "SEG", "TER"):
+                continue
+            grupos.setdefault((cod, val), []).append(num_carrera)
+
+    total = len(datos)
+    codes = _ordenar_codigos({cod for cod, _ in grupos.keys()})
+
+    filas: list[tuple[str, str, str]] = []
+    for cod in codes:
+        entries = [(v, carreras) for (c, v), carreras in grupos.items() if c == cod]
+        entries.sort(key=lambda x: (0, x[0]) if x[0] is not None else (1, 0))
+        for val, carreras in entries:
+            carrera_str = _format_carreras_list(carreras, total)
+            filas.append((carrera_str, cod, formato_valor(val)))
+
+    ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    ts_file = datetime.now().strftime("%Y-%m-%d_%H%M%S")
+    header = f"Reunión {info['reunion']} — {info['fecha']} — {info['hipodromo']}" if info.get("reunion") else "Tela Oficial"
+
+    html = f"""<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+
+<style>
+  * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+  body {{
+    font-family: Arial, Helvetica, sans-serif;
+    padding: 15px;
+    background: #fff;
+    color: #333;
+  }}
+  .container {{
+    width: fit-content;
+    max-width: 100%;
+    border: 1px solid #c8e6c9;
+    border-radius: 6px;
+    overflow: hidden;
+  }}
+  .header {{
+    background: #1b5e20;
+    color: #fff;
+    padding: 10px 14px;
+  }}
+  .header h1 {{ font-size: 14px; font-weight: 600; }}
+  .subtitle {{
+    font-size: 12px;
+    font-weight: 600;
+    color: #2e7d32;
+    padding: 8px 14px 4px;
+  }}
+  table {{
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }}
+  th {{
+    background: #1b5e20;
+    color: #fff;
+    padding: 5px 10px;
+    text-align: left;
+    font-weight: 600;
+  }}
+  th:nth-child(1) {{ width: 50%; }}
+  th:nth-child(2) {{ width: 20%; }}
+  th:nth-child(3) {{ width: 30%; }}
+  th.right {{ text-align: right; }}
+  td {{
+    padding: 3px 10px;
+    border-bottom: 1px solid #e0e0e0;
+  }}
+  td.dim {{ color: #999; }}
+  td.right {{ text-align: right; }}
+  td.bet {{ color: #2e7d32; font-weight: 600; }}
+  tr:nth-child(even) {{ background: #f1f8e9; }}
+  tr:nth-child(odd) {{ background: #fff; }}
+  @media print {{
+    body {{ padding: 10px; }}
+    .container {{ border: 1px solid #c8e6c9; }}
+    .header {{ -webkit-print-color-adjust: exact; print-color-adjust: exact; }}
+    th {{ -webkit-print-color-adjust: exact; print-color-adjust: exact; }}
+    tr:nth-child(even) {{ -webkit-print-color-adjust: exact; print-color-adjust: exact; }}
+  }}
+</style>
+</head>
+<body>
+<div class="container">
+<div class="header"><h1>{header}</h1></div>
+<div class="subtitle">BASES POR APUESTA</div>
+<table>
+<thead>
+<tr><th>Carreras</th><th>Apuesta</th><th class="right">Base</th></tr>
+</thead>
+<tbody>
+"""
+    for carreras, cod, val in filas:
+        html += f"<tr><td>{carreras}</td><td class=\"bet\">{cod}</td><td class=\"right\">{val}</td></tr>\n"
+
+    html += f"""</tbody>
+</table>
+</div>
+</body>
+</html>"""
+
+    with open(ruta_salida, "w", encoding="utf-8") as f:
+        f.write(html)
 
 
 def mostrar_resumen_comparacion(coincide: bool, diferencias: list[str], titulo: str = "COMPARACION") -> None:

@@ -310,6 +310,26 @@ def _obtener_apuestas_tela_oficial(ruta_pdf: str | Path) -> list[list]:
     return resultado
 
 
+def extraer_info_reunion_tela(ruta_pdf: str | Path) -> dict[str, str]:
+    import pypdf
+    reader = pypdf.PdfReader(ruta_pdf)
+    texto = (reader.pages[0].extract_text() or "").split("\n")
+    reunion = ""
+    fecha = ""
+    hipodromo = ""
+    for line in texto:
+        s = line.strip()
+        m = re.search(r"Reunion\s+(\d+)", s, re.IGNORECASE)
+        if m:
+            reunion = m.group(1)
+        d = re.search(r"(\d{2}/\d{2}/\d{4})", s)
+        if d:
+            fecha = d.group(1)
+        if "Hipodromo" in s:
+            hipodromo = s
+    return {"reunion": reunion, "fecha": fecha, "hipodromo": hipodromo}
+
+
 def obtener_apuestas_por_carrera(ruta_pdf: str | Path) -> list[list]:
     """Auto-detecta el formato del PDF y extrae las apuestas."""
     if es_tela_oficial(ruta_pdf):

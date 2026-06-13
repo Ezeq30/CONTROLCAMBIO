@@ -6,7 +6,10 @@ from pathlib import Path
 from typing import Optional, List
 
 import typer
-from rich.prompt import Prompt
+import os as _os
+from datetime import datetime
+from pathlib import Path
+from rich.prompt import Prompt, Confirm
 
 from controlcomparador import __version__
 from controlcomparador.agent import AgenteComparacion
@@ -14,6 +17,7 @@ from controlcomparador.detector import detectar_archivos, hipodromos_detectados,
 from controlcomparador.parsers.pdf import es_tela_oficial, obtener_apuestas_por_carrera, normalizar_desde_lista_apuestas
 from controlcomparador.ui.console import console
 from controlcomparador.ui.tables import (
+    exportar_resumen_html,
     imprimir_tabla_san_isidro,
     imprimir_tablas_palermo,
     imprimir_tabla_laplata,
@@ -370,6 +374,14 @@ def _resumen_tela_interactivo():
     console.rule("[bold]RESUMEN TELA OFICIAL[/bold]")
     console.print()
     imprimir_resumen_tela(datos, ruta)
+    if Confirm.ask("¿Guardar como HTML para imprimir?", default=False):
+        ts = datetime.now().strftime("%Y-%m-%d_%H%M%S")
+        desktop = Path(_os.path.expanduser("~/Desktop"))
+        salida = desktop / f"ControlComparador_{ts}.html"
+        with console.status("[bold green]Generando HTML...[/bold green]"):
+            exportar_resumen_html(datos, ruta, salida)
+        console.print(f"[green]HTML guardado en:[/green] {salida}")
+        _os.startfile(salida)
     Prompt.ask("[dim]Enter para continuar...[/dim]", default="")
 
 
