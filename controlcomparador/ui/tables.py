@@ -43,6 +43,25 @@ def _estado_apuesta(v1: Optional[float], v2: Optional[float], etiq1: str, etiq2:
     return f"[red]{SYM_FAIL}[/red]"
 
 
+def _estado_tres_fuentes(
+    v_pdf: Optional[float],
+    v_rep: Optional[float],
+    v_pos: Optional[float],
+    etiq_pdf: str,
+) -> str:
+    if v_pdf == v_rep:
+        return f"[green]{SYM_OK}[/green]"
+    if v_pdf is None:
+        if v_rep is not None and v_pos is not None:
+            return "[yellow]solo rep+post[/yellow]"
+        return "[yellow]solo reporte[/yellow]"
+    if v_rep is None:
+        if v_pos is not None:
+            return f"[yellow]solo {etiq_pdf}+post[/yellow]"
+        return f"[yellow]solo {etiq_pdf}[/yellow]"
+    return f"[red]{SYM_FAIL}[/red]"
+
+
 def imprimir_tabla_san_isidro(
     datos_pdf: dict,
     datos_reporte: dict,
@@ -64,7 +83,7 @@ def imprimir_tabla_san_isidro(
     t.add_column("Reporte", justify="right", width=10)
     if datos_posting:
         t.add_column("Posting", justify="right", width=10)
-    t.add_column("Estado", justify="center", width=10)
+    t.add_column("Estado", justify="center", width=16)
 
     todas = sorted(set(datos_pdf.keys()) | set(datos_reporte.keys()))
     for num_carrera in todas:
@@ -81,12 +100,16 @@ def imprimir_tabla_san_isidro(
         for idx, cod in enumerate(todos_codigos):
             v_pdf = pdf_ap.get(cod)
             v_rep = rep_ap.get(cod)
-            estado = _estado_apuesta(v_pdf, v_rep, label_pdf.lower(), "reporte")
+            if datos_posting:
+                v_pos = pos_ap.get(cod)
+                estado = _estado_tres_fuentes(v_pdf, v_rep, v_pos, label_pdf.lower())
+            else:
+                estado = _estado_apuesta(v_pdf, v_rep, label_pdf.lower(), "reporte")
             carrera_str = str(num_carrera) if idx == 0 else ""
             cab_show = cab_str if idx == 0 else ""
             row = [carrera_str, cab_show, cod, formato_valor(v_pdf), formato_valor(v_rep)]
             if datos_posting:
-                row.append(formato_valor(pos_ap.get(cod)))
+                row.append(formato_valor(v_pos))
             row.append(estado)
             t.add_row(*row)
 
