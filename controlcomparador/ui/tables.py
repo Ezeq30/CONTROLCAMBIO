@@ -216,6 +216,148 @@ def imprimir_tabla_posting_vs_reporte(
     console.print()
 
 
+def _validar_apuestas_tela(datos: dict[int, dict]) -> list[tuple[int, int, str]]:
+    warnings: list[tuple[int, int, str]] = []
+    for num_carrera in sorted(datos.keys()):
+        d = datos[num_carrera]
+        cab = d.get("caballos", 0)
+        apuestas = set(d.get("apuestas", {}).keys())
+
+        if cab < 8 and "TER" in apuestas:
+            warnings.append((num_carrera, cab, "TER no debería estar"))
+
+        if cab >= 12:
+            if "IMP" not in apuestas:
+                warnings.append((num_carrera, cab, "IMP debería estar"))
+            if "EXA" in apuestas:
+                warnings.append((num_carrera, cab, "EXA no debería estar"))
+
+        if cab <= 11:
+            if "EXA" not in apuestas:
+                warnings.append((num_carrera, cab, "EXA debería estar"))
+            if "IMP" in apuestas:
+                warnings.append((num_carrera, cab, "IMP no debería estar"))
+
+        if cab == 4:
+            if "SEG" in apuestas:
+                warnings.append((num_carrera, cab, "SEG no debería estar"))
+            if "TRI" in apuestas:
+                warnings.append((num_carrera, cab, "TRI no debería estar"))
+            if "CUA" in apuestas:
+                warnings.append((num_carrera, cab, "CUA no debería estar"))
+
+        if "EXA" in apuestas and "IMP" in apuestas:
+            warnings.append((num_carrera, cab, "EXA e IMP no pueden estar juntos"))
+
+        if "TRI" in apuestas and "CUA" in apuestas:
+            warnings.append((num_carrera, cab, "TRI y CUA no pueden estar juntos"))
+
+    return warnings
+
+
+def _mostrar_validaciones(warnings: list[tuple[int, int, str]]) -> None:
+    if not warnings:
+        console.print("[green]OK[/green]\n")
+        return
+
+    t = Table(box=box.SIMPLE, header_style="bold", title="[bold]VALIDACIONES[/bold]")
+    t.add_column("Carrera", style="yellow", width=6)
+    t.add_column("Caballos", justify="center", width=8)
+    t.add_column("Observación", width=60)
+
+    grouped: dict[tuple[int, int], list[str]] = {}
+    for num, cab, msg in warnings:
+        grouped.setdefault((num, cab), []).append(msg)
+
+    for (num, cab), msgs in sorted(grouped.items()):
+        t.add_row(str(num), str(cab), " / ".join(msgs))
+
+    console.print(t)
+    console.print()
+
+
+def _format_carreras_list(carreras: list[int], total: int) -> str:
+    if len(carreras) == total:
+        return "ALL"
+    carreras = sorted(carreras)
+    ranges: list[str] = []
+    start = carreras[0]
+    end = carreras[0]
+    for c in carreras[1:]:
+        if c == end + 1:
+            end = c
+        else:
+            ranges.append(f"{start}" if start == end else f"{start}-{end}")
+            start = c
+            end = c
+    ranges.append(f"{start}" if start == end else f"{start}-{end}")
+    return ",".join(ranges)
+
+
+def _mostrar_bases_por_apuesta(datos: dict[int, dict]) -> None:
+    grupos: dict[tuple[str, float | None], list[int]] = {}
+    for num_carrera in sorted(datos.keys()):
+        d = datos[num_carrera]
+        apuestas = d.get("apuestas", {})
+        for cod, val in apuestas.items():
+            grupos.setdefault((cod, val), []).append(num_carrera)
+
+    total = len(datos)
+    codes = _ordenar_codigos({cod for cod, _ in grupos.keys()})
+
+    ordered: list[tuple[tuple[str, float | None], list[int]]] = []
+    for cod in codes:
+        entries = [(v, carreras) for (c, v), carreras in grupos.items() if c == cod]
+        entries.sort(key=lambda x: (0, x[0]) if x[0] is not None else (1, 0))
+        for val, carreras in entries:
+            ordered.append(((cod, val), carreras))
+
+    t = Table(box=box.SIMPLE, header_style="bold", title="[bold]BASES POR APUESTA[/bold]")
+    t.add_column("#", justify="right", width=3, style="dim")
+    t.add_column("Carreras", width=16)
+    t.add_column("Apuesta", style="cyan", width=8)
+    t.add_column("Base", justify="right", width=10)
+
+    for idx, ((cod, val), carreras) in enumerate(ordered, 1):
+        t.add_row(str(idx), _format_carreras_list(carreras, total), cod, formato_valor(val))
+
+    console.print(t)
+    console.print()
+
+
+def imprimir_resumen_tela(datos: dict[int, dict], ruta: str) -> None:
+    total_carreras = len(datos)
+    total_apuestas = sum(len(d.get("apuestas", {})) for d in datos.values())
+
+    console.rule("[bold]RESUMEN TELA OFICIAL[/bold]")
+    console.print(f"  [dim]Archivo:[/dim] {ruta}")
+    console.print(f"  [cyan]Carreras:[/cyan] {total_carreras}  |  [cyan]Apuestas:[/cyan] {total_apuestas}\n")
+
+    t = Table(box=box.SIMPLE, header_style="bold")
+    t.add_column("Carrera", style="yellow", width=6)
+    t.add_column("Caballos", justify="center", width=8)
+    t.add_column("Apuesta", style="cyan", width=8)
+    t.add_column("Valor", justify="right", width=10)
+
+    for num_carrera in sorted(datos.keys()):
+        d = datos[num_carrera]
+        cab = d.get("caballos", 0)
+        apuestas = d.get("apuestas", {})
+        codigos = _ordenar_codigos(set(apuestas.keys()))
+        for idx, cod in enumerate(codigos):
+            val = apuestas.get(cod)
+            carrera_str = str(num_carrera) if idx == 0 else ""
+            cab_show = str(cab) if idx == 0 else ""
+            t.add_row(carrera_str, cab_show, cod, formato_valor(val))
+
+    console.print(t)
+    console.print()
+
+    warnings = _validar_apuestas_tela(datos)
+    _mostrar_validaciones(warnings)
+    _mostrar_bases_por_apuesta(datos)
+
+
 def mostrar_resumen_comparacion(coincide: bool, diferencias: list[str], titulo: str = "COMPARACION") -> None:
     if coincide:
         console.print(f"\n[bold green]{SYM_OK} {titulo}: todo coincide correctamente.[/bold green]\n")

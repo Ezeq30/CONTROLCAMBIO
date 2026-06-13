@@ -11,12 +11,14 @@ from rich.prompt import Prompt
 from controlcomparador import __version__
 from controlcomparador.agent import AgenteComparacion
 from controlcomparador.detector import detectar_archivos, hipodromos_detectados, resumen_deteccion
+from controlcomparador.parsers.pdf import es_tela_oficial, obtener_apuestas_por_carrera, normalizar_desde_lista_apuestas
 from controlcomparador.ui.console import console
 from controlcomparador.ui.tables import (
     imprimir_tabla_san_isidro,
     imprimir_tablas_palermo,
     imprimir_tabla_laplata,
     imprimir_tabla_posting_vs_reporte,
+    imprimir_resumen_tela,
     mostrar_resumen_comparacion,
 )
 from controlcomparador.ui.menus import (
@@ -305,7 +307,8 @@ def _menu_san_isidro_interactivo():
                 ("2", "Seleccionar reporte (TXT)"),
                 ("3", "Seleccionar Posting Prices (TXT)"),
                 ("4", "COMPARAR ARCHIVOS"),
-                ("5", "Volver al menu principal"),
+                ("5", "Resumen de tela oficial (PDF)"),
+                ("6", "Volver al menu principal"),
             ],
         )
 
@@ -347,7 +350,24 @@ def _menu_san_isidro_interactivo():
                 mostrar_resumen_comparacion(res_p["coincide"], res_p["diferencias"], "POSTING vs REPORTE")
             Prompt.ask("[dim]Enter para continuar...[/dim]", default="")
         elif op == "5":
+            _resumen_tela_interactivo()
+        elif op == "6":
             return
+
+
+def _resumen_tela_interactivo():
+    ruta = seleccionar_archivo("Ruta de la tela oficial (PDF): ", {".pdf"}, "tela oficial (PDF)")
+    if not ruta:
+        return
+    if not es_tela_oficial(ruta):
+        console.print("[red]El archivo seleccionado no es una tela oficial (no contiene 'Programa Depurado').[/red]")
+        Prompt.ask("[dim]Enter para continuar...[/dim]", default="")
+        return
+    with console.status("[bold blue]Analizando tela oficial...[/bold blue]"):
+        apuestas_raw = obtener_apuestas_por_carrera(ruta)
+        datos = normalizar_desde_lista_apuestas(apuestas_raw)
+    imprimir_resumen_tela(datos, ruta)
+    Prompt.ask("[dim]Enter para continuar...[/dim]", default="")
 
 
 def _menu_palermo_interactivo():
