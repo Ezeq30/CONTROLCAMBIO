@@ -62,6 +62,7 @@ pyinstaller ControlComparador.spec
   - **`es_apuesta_excluida(nombre)`**: excluye pases que no son 1er.Pase (2do, 3er, 4to, 5to, último, final) pero mantiene 1er.Pase y Final 1er.Pase
   - **`APUESTAS_SIN_COMPARAR_VALOR`**: GAN/SEG/TER se extraen con valor vacío (solo presencia)
 - `obtener_apuestas_por_carrera(ruta)` — auto-detecta: tela oficial → `_obtener_apuestas_tela_oficial()`, otro → `_obtener_apuestas_programa_oficial()`
+- `extraer_info_reunion_tela(ruta)` — extrae `{"reunion": "54", "fecha": "14/06/2026", "hipodromo": "..."}` desde página 1 del PDF para el HTML export
 
 #### detector.py
 - `_clasificar_pdf(ruta)` — detecta "Programa Depurado" → `"san_isidro"` (tela oficial usa mismo comparador)
@@ -69,8 +70,18 @@ pyinstaller ControlComparador.spec
 #### agent.py
 - `comparar_san_isidro()` — retorna `tipo_pdf: "TELA OFICIAL"` o `"OFICIAL"` según `es_tela_oficial()`
 
+#### app.py
+- Menú San Isidro opción 5: "Resumen de tela oficial (PDF)"
+- `_resumen_tela_interactivo()` — selecciona PDF tela oficial, muestra BASES POR APUESTA + VALIDACIONES, pregunta ¿Guardar HTML? → guarda en Escritorio y abre navegador
+- `_comparar_san_isidro_interactivo()` — flujo completo: selecciona PDF + reporte, compara, muestra tipo_pdf
+
 #### ui/tables.py
 - Tabla dinámica: título y columna "OFICIAL" vs "TELA OFICIAL" según `tipo_pdf`
+- `imprimir_resumen_tela(datos, ruta)` — muestra archivo + BASES POR APUESTA + VALIDACIONES (Rich tables)
+- `exportar_resumen_html(datos, ruta_pdf, ruta_salida)` — genera HTML standalone con marco verde, columnas 50/20/30%, width fit-content. Header "Reunión X — fecha — Hipódromo". Abre navegador automáticamente
+- `_mostrar_bases_por_apuesta(datos)` — tabla Rich agrupando apuestas por código+valor con formato "ALL" o rangos (1-8,10-13)
+- `_validar_carreras_tela(datos)` — valida reglas: EXA ↔ IMP según caballos, TRI ↔ CUA exclusión, etc.
+- `_format_carreras_list(carreras, total)` — "ALL", "1-3,5,7-9"
 
 ### Reglas de negocio importantes
 
@@ -96,7 +107,7 @@ pyinstaller ControlComparador.spec
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **CONTROLCAMBIO** (510 symbols, 1145 relationships, 43 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **CONTROLCAMBIO** (511 symbols, 1146 relationships, 43 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
 > Index stale? Run `node .gitnexus/run.cjs analyze` from the project root — it auto-selects an available runner. No `.gitnexus/run.cjs` yet? `npx gitnexus analyze` (npm 11 crash → `npm i -g gitnexus`; #1939).
 
