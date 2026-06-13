@@ -1,0 +1,138 @@
+## Proyecto: ControlComparador v2.0.0
+
+**Raíz:** `C:\Users\cdiaz\Desktop\CONTROLCAMBIO`
+
+### Arquitectura (v2, paquete modular)
+
+```
+controlcomparador/                    # Paquete Python moderno (14 módulos)
+├── __init__.py                       # Versión 2.0.0
+├── __main__.py                       # python -m controlcomparador
+├── app.py                            # Typer CLI (5 comandos)
+├── config.py                         # Constantes, regex, mapeos
+├── models.py                         # Dataclasses
+├── agent.py                          # AgenteComparacion wrapper
+├── detector.py                       # Auto-detecta hipódromo y tipo PDF
+├── parsers/
+│   ├── pdf.py                        # San Isidro PDF + Palermo PDF + Tela Oficial
+│   ├── report.py                     # RSM TABLE TXT
+│   ├── posting.py                    # CARD POSTING PRICES TXT
+│   └── planilla.py                   # La Plata XLS
+├── comparators/
+│   ├── san_isidro.py
+│   ├── palermo.py
+│   ├── laplata.py
+│   └── posting.py
+├── ui/
+│   ├── console.py                    # Rich theme
+│   ├── tables.py                     # Tablas Rich (soporta tipo_pdf)
+│   └── menus.py                      # Menú interactivo
+└── utils/
+    └── money.py                      # Parseo de montos
+```
+
+### CLI Commands
+
+```bash
+python -m controlcomparador menu                                # Modo interactivo
+python -m controlcomparador version                             # v2.0.0
+python -m controlcomparador san-isidro --pdf X --reporte Y      # San Isidro (Oficial o Tela)
+python -m controlcomparador palermo --bases X --reporte Y       # Palermo
+python -m controlcomparador la-plata --planilla X --reporte Y   # La Plata
+```
+
+### Dependencias
+
+```toml
+dependencies = ["pypdf>=3.0", "xlrd>=2.0", "rich>=13.0", "typer>=0.9"]
+```
+
+### Comando compilar
+
+```bash
+pyinstaller ControlComparador.spec
+```
+
+### Módulos clave y sus funciones
+
+#### parsers/pdf.py - Tela Oficial
+- `es_tela_oficial(ruta)` — detecta por "Programa Depurado" en texto
+- `_obtener_apuestas_tela_oficial(ruta)` — extrae apuestas anclado por líneas `APUESTAS:` (no por `Premio`), soporta "Clásico" como header de carrera
+- `_parsear_bets_tela(texto)` — parsea línea "Nombre $ Valor, ..." con filtros:
+  - **`es_apuesta_excluida(nombre)`**: excluye pases que no son 1er.Pase (2do, 3er, 4to, 5to, último, final) pero mantiene 1er.Pase y Final 1er.Pase
+  - **`APUESTAS_SIN_COMPARAR_VALOR`**: GAN/SEG/TER se extraen con valor vacío (solo presencia)
+- `obtener_apuestas_por_carrera(ruta)` — auto-detecta: tela oficial → `_obtener_apuestas_tela_oficial()`, otro → `_obtener_apuestas_programa_oficial()`
+
+#### detector.py
+- `_clasificar_pdf(ruta)` — detecta "Programa Depurado" → `"san_isidro"` (tela oficial usa mismo comparador)
+
+#### agent.py
+- `comparar_san_isidro()` — retorna `tipo_pdf: "TELA OFICIAL"` o `"OFICIAL"` según `es_tela_oficial()`
+
+#### ui/tables.py
+- Tabla dinámica: título y columna "OFICIAL" vs "TELA OFICIAL" según `tipo_pdf`
+
+### Reglas de negocio importantes
+
+- **Tela Oficial San Isidro**: anclaje por `APUESTAS:` (no `Premio`). Las líneas después de "Bolsa Total:" y antes del número de carrera son "extra bets" (pases). Se filtran con `es_apuesta_excluida()`. GAN/SEG/TER se extraen como presencia (None), no como valor.
+- **La Plata:** CUATERNA = QTN, CUATRIFECTA = CUA (al revés que otros hipódromos)
+- **San Isidro:** GAN, SEG, TER solo se comparan en existencia, no en valor
+- **Palermo:** Si EXA/TRI aparece UNA sola vez en el PDF, se expande a todas las carreras (regla "ALL si única línea")
+- **Posting:** El segundo archivo TXT sobrescribe al primero en caso de conflicto
+
+### Bugs fixes conocidos
+
+**Falso positivo EXA/TRI en Carrera 7 (Palermo):**
+- `normalizar_reporte_palermo()` retorna tupla `(valores_por_carrera, codigos_con_all)`
+- `comparar_oficial_palermo_con_reporte()` excluye `codigos_con_all` de `solo_en_reporte`
+- `comparar_posting_con_reporte()` excluye `codigos_con_all` de ambos lados
+
+### Próximas mejoras planeadas
+
+- Auto-detect: pasar una carpeta y que busque automáticamente los archivos PDF/TXT/XLS
+- Tests con pytest
+- Modo batch para procesar múltiples hipódromos
+
+<!-- gitnexus:start -->
+# GitNexus — Code Intelligence
+
+This project is indexed by GitNexus as **CONTROLCAMBIO** (481 symbols, 1077 relationships, 40 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+
+> Index stale? Run `node .gitnexus/run.cjs analyze` from the project root — it auto-selects an available runner. No `.gitnexus/run.cjs` yet? `npx gitnexus analyze` (npm 11 crash → `npm i -g gitnexus`; #1939).
+
+## Always Do
+
+- **MUST run impact analysis before editing any symbol.** Before modifying a function, class, or method, run `impact({target: "symbolName", direction: "upstream"})` and report the blast radius (direct callers, affected processes, risk level) to the user.
+- **MUST run `detect_changes()` before committing** to verify your changes only affect expected symbols and execution flows. For regression review, compare against the default branch: `detect_changes({scope: "compare", base_ref: "main"})`.
+- **MUST warn the user** if impact analysis returns HIGH or CRITICAL risk before proceeding with edits.
+- When exploring unfamiliar code, use `query({query: "concept"})` to find execution flows instead of grepping. It returns process-grouped results ranked by relevance.
+- When you need full context on a specific symbol — callers, callees, which execution flows it participates in — use `context({name: "symbolName"})`.
+
+## Never Do
+
+- NEVER edit a function, class, or method without first running `impact` on it.
+- NEVER ignore HIGH or CRITICAL risk warnings from impact analysis.
+- NEVER rename symbols with find-and-replace — use `rename` which understands the call graph.
+- NEVER commit changes without running `detect_changes()` to check affected scope.
+
+## Resources
+
+| Resource | Use for |
+|----------|---------|
+| `gitnexus://repo/CONTROLCAMBIO/context` | Codebase overview, check index freshness |
+| `gitnexus://repo/CONTROLCAMBIO/clusters` | All functional areas |
+| `gitnexus://repo/CONTROLCAMBIO/processes` | All execution flows |
+| `gitnexus://repo/CONTROLCAMBIO/process/{name}` | Step-by-step execution trace |
+
+## CLI
+
+| Task | Read this skill file |
+|------|---------------------|
+| Understand architecture / "How does X work?" | `.claude/skills/gitnexus/gitnexus-exploring/SKILL.md` |
+| Blast radius / "What breaks if I change X?" | `.claude/skills/gitnexus/gitnexus-impact-analysis/SKILL.md` |
+| Trace bugs / "Why is X failing?" | `.claude/skills/gitnexus/gitnexus-debugging/SKILL.md` |
+| Rename / extract / split / refactor | `.claude/skills/gitnexus/gitnexus-refactoring/SKILL.md` |
+| Tools, resources, schema reference | `.claude/skills/gitnexus/gitnexus-guide/SKILL.md` |
+| Index, status, clean, wiki CLI commands | `.claude/skills/gitnexus/gitnexus-cli/SKILL.md` |
+
+<!-- gitnexus:end -->
