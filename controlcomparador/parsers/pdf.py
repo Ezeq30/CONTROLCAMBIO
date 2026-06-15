@@ -13,6 +13,7 @@ from controlcomparador.config import (
     PATRON_EXCLUIR_PASE_SIN_FINAL,
     PATRON_FINAL,
     PATRON_PRIMER_PASE,
+    PATRON_PASE_TELA,
     PATRON_LINEA_APUESTA,
     PATRON_CABALLO,
     PATRON_FECHA,
@@ -335,6 +336,76 @@ def obtener_apuestas_por_carrera(ruta_pdf: str | Path) -> list[list]:
     if es_tela_oficial(ruta_pdf):
         return _obtener_apuestas_tela_oficial(ruta_pdf)
     return _obtener_apuestas_programa_oficial(ruta_pdf)
+
+
+def extraer_pases_tela_oficial(ruta_pdf: str | Path) -> dict[int, dict[str, set[str]]]:
+    """Extrae info de pases (1er.Pase, 2do.Pase, etc.) para apuestas pick.
+    Retorna {num_carrera: {codigo: {pase_normalizado, ...}}}"""
+    import pypdf
+    reader = pypdf.PdfReader(ruta_pdf)
+    resultado: dict[int, dict[str, set[str]]] = {}
+
+    for pagina in reader.pages:
+        texto = pagina.extract_text() or ""
+        lineas = texto.split("\n")
+        if not lineas:
+            continue
+
+        apuestas_indices = [
+            i for i, l in enumerate(lineas)
+            if l.strip().upper().startswith("APUESTAS:")
+        ]
+        if not apuestas_indices:
+            continue
+
+        for idx, start_idx in enumerate(apuestas_indices):
+            end_idx = apuestas_indices[idx + 1] if idx + 1 < len(apuestas_indices) else len(lineas)
+            race_lines = lineas[start_idx:end_idx]
+
+            # Extraer nro de carrera
+            num_carrera = None
+            for l in race_lines:
+                s = l.strip()
+                if s.isdigit() and 1 <= int(s) <= 30:
+                    num_carrera = int(s)
+                    break
+            if num_carrera is None:
+                continue
+
+            pases_carrera: dict[str, set[str]] = {}
+
+            for l in race_lines:
+                s = l.strip()
+                if not s:
+                    continue
+                if s == "CHAQUETILLAS":
+                    continue
+                for m in PATRON_PASE_TELA.finditer(s):
+                    bet_raw = m.group(1).lower()
+                    pase_raw = m.group(2)
+                    pase_norm = _normalizar_pase(pase_raw)
+                    codigo = abreviar_apuesta(bet_raw)
+                    if codigo:
+                        pases_carrera.setdefault(codigo, set()).add(pase_norm)
+
+            if pases_carrera:
+                resultado[num_carrera] = pases_carrera
+
+    return resultado
+
+
+def _normalizar_pase(pase: str) -> str:
+    """Normaliza nombre de pase a formato consistente.
+    1er. Pase  -> 1er.Pase
+    ultimo pase -> Ultimo Pase
+    1er.Pase   -> 1er.Pase"""
+    pase = pase.strip().lower()
+    pase = re.sub(r"(\.)\s+", r"\1", pase)
+    pase = re.sub(r"\s+", " ", pase)
+    pase = re.sub(r"\bpase\b", "Pase", pase)
+    if pase:
+        pase = pase[0].upper() + pase[1:]
+    return pase
 
 
 def normalizar_desde_lista_apuestas(apuestas_raw: list[list]) -> dict[int, dict]:

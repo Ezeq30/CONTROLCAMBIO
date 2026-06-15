@@ -14,7 +14,7 @@ from rich.prompt import Prompt, Confirm
 from controlcomparador import __version__
 from controlcomparador.agent import AgenteComparacion
 from controlcomparador.detector import detectar_archivos, hipodromos_detectados, resumen_deteccion
-from controlcomparador.parsers.pdf import es_tela_oficial, obtener_apuestas_por_carrera, normalizar_desde_lista_apuestas
+from controlcomparador.parsers.pdf import es_tela_oficial, obtener_apuestas_por_carrera, normalizar_desde_lista_apuestas, extraer_pases_tela_oficial
 from controlcomparador.ui.console import console
 from controlcomparador.ui.tables import (
     exportar_resumen_html,
@@ -370,6 +370,10 @@ def _resumen_tela_interactivo():
     with console.status("[bold blue]Analizando tela oficial...[/bold blue]"):
         apuestas_raw = obtener_apuestas_por_carrera(ruta)
         datos = normalizar_desde_lista_apuestas(apuestas_raw)
+        pases = extraer_pases_tela_oficial(ruta)
+        for num_carrera, pases_carrera in pases.items():
+            if num_carrera in datos:
+                datos[num_carrera]["pases"] = pases_carrera
     limpiar_pantalla()
     console.rule("[bold]RESUMEN TELA OFICIAL[/bold]")
     console.print()

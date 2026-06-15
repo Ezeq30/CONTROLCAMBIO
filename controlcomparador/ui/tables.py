@@ -11,7 +11,11 @@ from rich import box
 from datetime import datetime
 from pathlib import Path
 
-from controlcomparador.config import ORDEN_APUESTAS, SYM_OK, SYM_FAIL, APUESTAS_PICK
+from collections import defaultdict
+from controlcomparador.config import (
+    ORDEN_APUESTAS, SYM_OK, SYM_FAIL, APUESTAS_PICK,
+    PASES_POR_APUESTA, PASE_ORDER,
+)
 from controlcomparador.parsers.pdf import extraer_info_reunion_tela
 from controlcomparador.ui.console import console
 
@@ -359,11 +363,115 @@ def _mostrar_bases_por_apuesta(datos: dict[int, dict]) -> None:
     console.print()
 
 
+def _agrupar_pases_por_secuencia(datos: dict[int, dict]) -> dict[str, list[tuple[int, int, str, str]]]:
+    """Analiza pases y retorna {codigo: [(carrera_inicio, carrera_fin, detalle, estado)]}
+    usando lógica de secuencia: 1er.Pase en C1 → 2do.Pase en C2 → ..."""
+    triples: list[tuple[int, str, str]] = []
+    for num_carrera in sorted(datos.keys()):
+        d = datos[num_carrera]
+        pases = d.get("pases")
+        if not pases:
+            continue
+        for codigo, pases_set in pases.items():
+            for pase in pases_set:
+                triples.append((num_carrera, codigo, pase))
+
+    lookup: set[tuple[int, str, str]] = set(triples)
+
+    starts: dict[str, list[int]] = {}
+    for c, co, p in triples:
+        if p == "1er.Pase":
+            starts.setdefault(co, []).append(c)
+    for co in starts:
+        starts[co].sort()
+
+    resultado: dict[str, list[tuple[int, int, str, str]]] = {}
+    for codigo in sorted(starts.keys()):
+        expected = PASES_POR_APUESTA.get(codigo)
+        if not expected:
+            continue
+        secuencias: list[tuple[int, int, str, str]] = []
+        for sc in starts[codigo]:
+            partes: list[str] = []
+            faltantes: list[str] = []
+            for idx, pase_name in enumerate(expected):
+                carrera = sc + idx
+                if (carrera, codigo, pase_name) in lookup:
+                    partes.append(f"{pase_name}(C{carrera})")
+                else:
+                    faltantes.append(pase_name)
+            fin = sc + len(expected) - 1
+            if faltantes:
+                detalle = f"Falta: {', '.join(faltantes)}"
+                estado = "[yellow]INCOMPLETA[/yellow]"
+            else:
+                detalle = " → ".join(partes)
+                estado = "[green]COMPLETA[/green]"
+            secuencias.append((sc, fin, detalle, estado))
+        if secuencias:
+            resultado[codigo] = secuencias
+    return resultado
+
+
+def _mostrar_validacion_pases(datos: dict[int, dict]) -> None:
+    secuencias = _agrupar_pases_por_secuencia(datos)
+    if not secuencias:
+        return
+
+    console.print()
+    for codigo in sorted(secuencias.keys()):
+        seqs = secuencias[codigo]
+        expected = PASES_POR_APUESTA.get(codigo, [])
+        t = Table(
+            box=box.SIMPLE, header_style="bold",
+            title=f"[bold]CONTROL DE PASES - {codigo} ({len(expected)}p)[/bold]",
+        )
+        t.add_column("#", justify="right", width=3, style="dim")
+        t.add_column("Carreras", width=12)
+        t.add_column("Detalle", width=75)
+        t.add_column("Estado", justify="center", width=14)
+
+        for i, (sc, fin, detalle, estado) in enumerate(seqs, 1):
+            t.add_row(str(i), f"C{sc}→C{fin}", detalle, estado)
+
+        console.print(t)
+        console.print()
+
+
+def _mostrar_resumen_bases_unicas(datos: dict[int, dict]) -> None:
+    from collections import defaultdict
+    valores_por_codigo: dict[str, set[float | None]] = defaultdict(set)
+    for d in datos.values():
+        apuestas = d.get("apuestas", {})
+        for cod, val in apuestas.items():
+            if cod in ("GAN", "SEG", "TER"):
+                continue
+            valores_por_codigo[cod].add(val)
+
+    lineas: list[str] = []
+    for cod in sorted(valores_por_codigo.keys()):
+        vals = valores_por_codigo[cod]
+        if len(vals) == 1:
+            val = next(iter(vals))
+            if val is not None:
+                lineas.append(f"{cod}: todas son de {formato_valor(val)}")
+
+    if not lineas:
+        return
+
+    console.print()
+    for linea in lineas:
+        console.print(f"  [red]{linea}[/red]")
+    console.print()
+
+
 def imprimir_resumen_tela(datos: dict[int, dict], ruta: str) -> None:
     console.print(f"  [dim]Archivo:[/dim] {ruta}")
     _mostrar_bases_por_apuesta(datos)
+    _mostrar_resumen_bases_unicas(datos)
     resultados = _validar_carreras_tela(datos)
     _mostrar_validaciones(resultados)
+    _mostrar_validacion_pases(datos)
 
 
 def exportar_resumen_html(datos: dict[int, dict], ruta_pdf: str | Path, ruta_salida: str | Path) -> None:
@@ -436,9 +544,13 @@ def exportar_resumen_html(datos: dict[int, dict], ruta_pdf: str | Path, ruta_sal
     text-align: left;
     font-weight: 600;
   }}
-  th:nth-child(1) {{ width: 50%; }}
-  th:nth-child(2) {{ width: 20%; }}
-  th:nth-child(3) {{ width: 30%; }}
+  .bases-table th:nth-child(1) {{ width: 50%; }}
+  .bases-table th:nth-child(2) {{ width: 20%; }}
+  .bases-table th:nth-child(3) {{ width: 30%; }}
+  .pases-table th:nth-child(1) {{ width: 5%; }}
+  .pases-table th:nth-child(2) {{ width: 15%; }}
+  .pases-table th:nth-child(3) {{ width: 62%; }}
+  .pases-table th:nth-child(4) {{ width: 18%; }}
   th.right {{ text-align: right; }}
   td {{
     padding: 3px 10px;
@@ -447,6 +559,14 @@ def exportar_resumen_html(datos: dict[int, dict], ruta_pdf: str | Path, ruta_sal
   td.dim {{ color: #999; }}
   td.right {{ text-align: right; }}
   td.bet {{ color: #2e7d32; font-weight: 600; }}
+  td.ok {{ color: #2e7d32; font-weight: 600; }}
+  td.warn {{ color: #e65100; font-weight: 600; }}
+  .resumen-line {{
+    font-size: 12px;
+    padding: 2px 14px;
+    color: #c62828;
+    font-weight: 600;
+  }}
   tr:nth-child(even) {{ background: #f1f8e9; }}
   tr:nth-child(odd) {{ background: #fff; }}
   @media print {{
@@ -462,7 +582,7 @@ def exportar_resumen_html(datos: dict[int, dict], ruta_pdf: str | Path, ruta_sal
 <div class="container">
 <div class="header"><h1>{header}</h1></div>
 <div class="subtitle">BASES POR APUESTA</div>
-<table>
+<table class="bases-table">
 <thead>
 <tr><th>Carreras</th><th>Apuesta</th><th class="right">Base</th></tr>
 </thead>
@@ -471,9 +591,52 @@ def exportar_resumen_html(datos: dict[int, dict], ruta_pdf: str | Path, ruta_sal
     for carreras, cod, val in filas:
         html += f"<tr><td>{carreras}</td><td class=\"bet\">{cod}</td><td class=\"right\">{val}</td></tr>\n"
 
-    html += f"""</tbody>
+    html += """</tbody>
 </table>
-</div>
+"""
+
+    # --- Resumen de bases únicas ---
+    from collections import defaultdict
+    valores_por_codigo: dict[str, set[float | None]] = defaultdict(set)
+    for d in datos.values():
+        apuestas = d.get("apuestas", {})
+        for cod, val in apuestas.items():
+            if cod in ("GAN", "SEG", "TER"):
+                continue
+            valores_por_codigo[cod].add(val)
+
+    resumen_lineas: list[str] = []
+    for cod in sorted(valores_por_codigo.keys()):
+        vals = valores_por_codigo[cod]
+        if len(vals) == 1:
+            val = next(iter(vals))
+            if val is not None:
+                resumen_lineas.append(f"<span class=\"resumen-base\">{cod}: todas son de {formato_valor(val)}</span>")
+
+    if resumen_lineas:
+        for linea in resumen_lineas:
+            html += f'<div class="resumen-line">{linea}</div>\n'
+
+    # --- Tabla de pases (secuencias) ---
+    secuencias = _agrupar_pases_por_secuencia(datos)
+    if secuencias:
+        html += '<div class="subtitle">CONTROL DE PASES</div>\n'
+        for codigo in sorted(secuencias.keys()):
+            seqs = secuencias[codigo]
+            expected = PASES_POR_APUESTA.get(codigo, [])
+            html += f'<table class="pases-table" style="margin-bottom:8px">\n'
+            html += f'<thead>\n'
+            html += f'<tr><th colspan="4" style="text-align:center">CONTROL DE PASES - {codigo} ({len(expected)}p)</th></tr>\n'
+            html += f'<tr><th>#</th><th>Carreras</th><th>Detalle</th><th class="right">Estado</th></tr>\n'
+            html += f'</thead>\n<tbody>\n'
+            for i, (sc, fin, detalle, estado) in enumerate(seqs, 1):
+                is_ok = "COMPLETA" in estado
+                estado_class = "ok" if is_ok else "warn"
+                estado_clean = "COMPLETA" if is_ok else "INCOMPLETA"
+                html += f'<tr><td>{i}</td><td>C{sc}→C{fin}</td><td>{detalle}</td><td class="right {estado_class}">{estado_clean}</td></tr>\n'
+            html += '</tbody>\n</table>\n'
+
+    html += """</div>
 </body>
 </html>"""
 

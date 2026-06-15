@@ -22,6 +22,26 @@ PATRON_EXCLUIR_PASE_SIN_FINAL = re.compile(
 PATRON_FINAL = re.compile(r"\bfinal\b|final\s*pase", re.IGNORECASE)
 PATRON_PRIMER_PASE = re.compile(r"\b1er\.?\s*pase\b|\b1re\.?\s*pase\b", re.IGNORECASE)
 
+# Patrón para detectar pases en tela oficial (Cuaterna 1er.Pase, Cuaterna Con Jackpot 1er.Pase, etc.)
+PATRON_PASE_TELA = re.compile(
+    r"(cuaterna|quintuplo|triplo|cadena)\s+(?:con\s+jackpot\s+)?(1er\.?\s*pase|2do\.?\s*pase|3er\.?\s*pase|4to\.?\s*pase|5to\.?\s*pase|6to\.?\s*pase|ultimo\s*pase)",
+    re.IGNORECASE,
+)
+
+# Orden de pases para validación de secuencias
+ORDEN_PASES: list[str] = [
+    "1er.Pase", "2do.Pase", "3er.Pase", "4to.Pase", "5to.Pase", "Ultimo Pase",
+]
+PASE_ORDER: dict[str, int] = {name: i + 1 for i, name in enumerate(ORDEN_PASES)}
+
+# Apuestas pick y qué pases necesita cada una (en orden)
+PASES_POR_APUESTA: dict[str, list[str]] = {
+    "QTN": ["1er.Pase", "2do.Pase", "3er.Pase", "Ultimo Pase"],
+    "QTP": ["1er.Pase", "2do.Pase", "3er.Pase", "4to.Pase", "Ultimo Pase"],
+    "TPL": ["1er.Pase", "2do.Pase", "Ultimo Pase"],
+    "CAD": ["1er.Pase", "2do.Pase", "3er.Pase", "4to.Pase", "5to.Pase", "Ultimo Pase"],
+}
+
 # Mapeo de abreviaturas
 MAPEO_ABREVIATURAS: dict[str, str] = {
     "ganador": "GAN",
