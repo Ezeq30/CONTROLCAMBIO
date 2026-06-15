@@ -65,6 +65,8 @@ pyinstaller ControlComparador.spec
 - `_parsear_bets_tela(texto)` — parsea línea "Nombre $ Valor, ..." con filtros:
   - **`es_apuesta_excluida(nombre)`**: excluye pases que no son 1er.Pase (2do, 3er, 4to, 5to, último, final) pero mantiene 1er.Pase y Final 1er.Pase
   - **`APUESTAS_SIN_COMPARAR_VALOR`**: GAN/SEG/TER se extraen con valor vacío (solo presencia)
+- `extraer_pases_tela_oficial(ruta)` — extrae pases de tela oficial. Busca líneas después de "Bolsa Total:" y antes del nro de carrera, parsea apuestas pick con `$ Valor` y pase name (1er.Pase, 2do.Pase, etc.). Usa `_normalizar_pase()` para formato consistente. Retorna `dict[int, dict[str, set[str]]]` → `{nro_carrera: {codigo: {pase_name, ...}}}`
+- `_normalizar_pase(texto)` — normaliza nombres de pase: "1er.Pase", "2do.Pase", "3er.Pase", "4to.Pase", "5to.Pase", "Último.Pase", "Final.1er.Pase"
 - `obtener_apuestas_por_carrera(ruta)` — auto-detecta: tela oficial → `_obtener_apuestas_tela_oficial()`, otro → `_obtener_apuestas_programa_oficial()`
 - `extraer_info_reunion_tela(ruta)` — extrae `{"reunion": "54", "fecha": "14/06/2026", "hipodromo": "..."}` desde página 1 del PDF para el HTML export
 
@@ -72,6 +74,11 @@ pyinstaller ControlComparador.spec
 - `APUESTAS_SIN_COMPARAR_VALOR = {"GAN", "SEG", "TER"}` — códigos que solo se comparan en existencia
 - `APUESTAS_PICK = {"TPL", "QTN", "QTP", "CAD"}` — apuestas pick mutuamente excluyentes por carrera
 - `APUESTAS_IGNORAR_LAPLATA = {"GAN", "SEG", "TER", "QTN"}` — ignoradas del lado reporte en La Plata
+- `PASES_POR_APUESTA = {"TPL": ["1er.Pase", "2do.Pase", "3er.Pase"], ...}` — dict de código → lista ordenada de pases esperados
+- `PASE_ORDER = ["1er.Pase", "2do.Pase", "3er.Pase", "4to.Pase", "5to.Pase", "Último.Pase", "Final.1er.Pase"]` — orden global de todos los pases posibles
+- `PATRON_EXTRA_BETS_PASE = re.compile(...)` — regex extrae "Apuesta $ Valor" de líneas de pase
+- `PATRON_FINAL = re.compile(r"\bFinal\b", re.IGNORECASE)` — detecta "Final"
+- `PATRON_PRIMER_PASE = re.compile(r"\b1[.:]\s*er\b", re.IGNORECASE)` — detecta "1er"
 
 #### detector.py
 - `_clasificar_pdf(ruta)` — detecta "Programa Depurado" → `"san_isidro"` (tela oficial usa mismo comparador)
@@ -83,13 +90,17 @@ pyinstaller ControlComparador.spec
 - Menú San Isidro opción 5: "Resumen de tela oficial (PDF)"
 - `_resumen_tela_interactivo()` — selecciona PDF tela oficial, muestra BASES POR APUESTA + VALIDACIONES, pregunta ¿Guardar HTML? → guarda en Escritorio y abre navegador
 - `_comparar_san_isidro_interactivo()` — flujo completo: selecciona PDF + reporte, compara, muestra tipo_pdf
+- Extrae pases con `extraer_pases_tela_oficial()` y los mergea en los datos para validación de secuencias
 
 #### ui/tables.py
 - Tabla dinámica: título y columna "OFICIAL" vs "TELA OFICIAL" según `tipo_pdf`
-- `imprimir_resumen_tela(datos, ruta)` — muestra archivo + BASES POR APUESTA + VALIDACIONES (Rich tables)
-- `exportar_resumen_html(datos, ruta_pdf, ruta_salida)` — genera HTML standalone con marco verde, columnas 50/20/30%, width fit-content. Header "Reunión X — fecha — Hipódromo". Abre navegador automáticamente
+- `imprimir_resumen_tela(datos, ruta)` — muestra archivo + BASES POR APUESTA + RESUMEN BASES ÚNICAS + VALIDACIONES + CONTROL DE PASES (Rich tables)
+- `exportar_resumen_html(datos, ruta_pdf, ruta_salida)` — genera HTML standalone con marco verde, columnas 50/20/30%, width fit-content. Header "Reunión X — fecha — Hipódromo". Incluye secuencias de pases y resumen de bases únicas. Abre navegador automáticamente
 - `_mostrar_bases_por_apuesta(datos)` — tabla Rich agrupando apuestas por código+valor con formato "ALL" o rangos (1-8,10-13)
+- `_mostrar_resumen_bases_unicas(datos)` — debajo de BASES POR APUESTA, muestra en rojo las apuestas que tienen UN SOLO valor base (ej. "EXA: todas son de 2000"). Excluye GAN/SEG/TER (presencia)
 - `_validar_carreras_tela(datos)` — valida reglas: EXA ↔ IMP según caballos, TRI ↔ CUA exclusión, pick conflict (TPL/QTN/QTP/CAD), etc.
+- `_agrupar_pases_por_secuencia(datos)` — analiza pases desde cada 1er.Pase, agrupa por código de apuesta, muestra start→end carreras y marca COMPLETA/INCOMPLETA
+- `_mostrar_validacion_pases(datos)` — tabla Rich por apuesta (TPL/QTN/QTP/CAD) mostrando secuencias de pases, carreras start→end, y estado COMPLETA (verde) / INCOMPLETA (amarillo con faltantes)
 - `_format_carreras_list(carreras, total)` — "ALL", "1-3,5,7-9"
 
 ### Reglas de negocio importantes
@@ -101,6 +112,8 @@ pyinstaller ControlComparador.spec
 - **Posting:** El segundo archivo TXT sobrescribe al primero en caso de conflicto
 - **Apuestas Pick:** TPL, QTN, QTP y CAD son mutuamente excluyentes por carrera. `validar_pick_conflict()` en `parsers/report.py` detecta >1 pick en la misma carrera.
 - **ALL race_map en comparación presencia:** Cuando el RSM TABLE usa `ALL` para un código (ej. `ALL --- EXA 2000`), el código se agrega a `codigos_con_all` y se excluye del check `solo_en_reporte`. Aplica en San Isidro, La Plata y Palermo oficial.
+- **Resumen de bases únicas (tela oficial):** `_mostrar_resumen_bases_unicas()` en `ui/tables.py` muestra en rojo las apuestas que tienen exactamente un solo valor base en todas las carreras (ej. "EXA: todas son de 2000"). Excluye GAN/SEG/TER (presencia).
+- **Secuencias de pases:** Las apuestas pick (TPL=3p, QTN=4p, QTP=5p, CAD=6p) se validan por secuencias. Cada 1er.Pase inicia una secuencia que debe completarse con los pases siguientes (2do, 3er, etc.). Se considera COMPLETA si aparecen todos los pases esperados consecutivamente, INCOMPLETA si faltan algunos.
 
 ### Comparadores
 
