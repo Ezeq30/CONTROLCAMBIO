@@ -83,8 +83,8 @@ def comparar_oficial_con_posting(
             diferencias.append(f"Carrera {num_carrera}: presente en Oficial pero no en Posting")
             continue
 
-        aps_pdf = set(datos_pdf[num_carrera].get("apuestas", {}).keys())
-        aps_posting = set(valores_posting[num_carrera].keys())
+        aps_pdf = set(datos_pdf[num_carrera].get("apuestas", {}).keys()) - APUESTAS_SIN_COMPARAR_VALOR
+        aps_posting = set(valores_posting[num_carrera].keys()) - APUESTAS_SIN_COMPARAR_VALOR
         solo_en_pdf = aps_pdf - aps_posting
         solo_en_posting = (aps_posting - aps_pdf) - codigos_all_posting
 
