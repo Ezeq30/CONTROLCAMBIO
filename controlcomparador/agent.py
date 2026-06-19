@@ -8,7 +8,7 @@ from typing import Optional
 from controlcomparador.comparators.san_isidro import comparar_pdf_y_reporte
 from controlcomparador.comparators.palermo import comparar_palermo, comparar_oficial_palermo_con_reporte
 from controlcomparador.comparators.laplata import comparar_planilla_con_reporte
-from controlcomparador.comparators.posting import comparar_posting_con_reporte
+from controlcomparador.comparators.posting import comparar_posting_con_reporte, comparar_oficial_con_posting
 from controlcomparador.parsers.pdf import (
     obtener_apuestas_por_carrera,
     normalizar_pdf,
@@ -125,6 +125,13 @@ class AgenteComparacion:
         datos_posting = merge_posting_prices(rutas_posting)
         coincide, diferencias = comparar_posting_con_reporte(datos_posting, ruta_reporte)
         return {"coincide": coincide, "diferencias": diferencias, "datos_posting": datos_posting}
+
+    def comparar_oficial_posting(self, ruta_pdf: str | Path, rutas_posting: list[str | Path]) -> dict:
+        apuestas = obtener_apuestas_por_carrera(ruta_pdf)
+        datos_pdf = normalizar_pdf(ruta_pdf, apuestas_raw=apuestas)
+        datos_posting = merge_posting_prices(rutas_posting)
+        coincide, diferencias = comparar_oficial_con_posting(datos_pdf, datos_posting)
+        return {"coincide": coincide, "diferencias": diferencias}
 
     def comparar_laplata(self, ruta_xls: str | Path, ruta_reporte: str | Path) -> dict:
         coincide, diferencias = comparar_planilla_con_reporte(ruta_xls, ruta_reporte)

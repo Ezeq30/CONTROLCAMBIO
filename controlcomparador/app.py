@@ -68,6 +68,9 @@ def san_isidro(
     mostrar_resumen_comparacion(resultado["coincide"], resultado["diferencias"], label)
     if posting:
         mostrar_resumen_comparacion(resultado_posting["coincide"], resultado_posting["diferencias"], "POSTING vs REPORTE")
+        res_op = _agente.comparar_oficial_posting(pdf, posting)
+        label_op = f"{resultado.get('tipo_pdf', 'OFICIAL')} vs POSTING"
+        mostrar_resumen_comparacion(res_op["coincide"], res_op["diferencias"], label_op)
 
 
 @app.command()
@@ -189,6 +192,9 @@ def ejecutar_auto_comparacion(seleccion: str, deteccion: dict) -> None:
         mostrar_resumen_comparacion(resultado["coincide"], resultado["diferencias"], label)
         if posting:
             mostrar_resumen_comparacion(resultado_posting["coincide"], resultado_posting["diferencias"], "POSTING vs REPORTE")
+            res_op = _agente.comparar_oficial_posting(pdf, posting)
+            label_op = f"{resultado.get('tipo_pdf', 'OFICIAL')} vs POSTING"
+            mostrar_resumen_comparacion(res_op["coincide"], res_op["diferencias"], label_op)
 
     elif seleccion == "palermo":
         bases = info.get("bases_pdf")
@@ -352,6 +358,9 @@ def _menu_san_isidro_interactivo():
             mostrar_resumen_comparacion(resultado["coincide"], resultado["diferencias"], label)
             if rutas_posting:
                 mostrar_resumen_comparacion(res_p["coincide"], res_p["diferencias"], "POSTING vs REPORTE")
+                res_op = _agente.comparar_oficial_posting(ruta_pdf, rutas_posting)
+                label_op = f"{resultado.get('tipo_pdf', 'OFICIAL')} vs POSTING"
+                mostrar_resumen_comparacion(res_op["coincide"], res_op["diferencias"], label_op)
             Prompt.ask("[dim]Enter para continuar...[/dim]", default="")
         elif op == "5":
             _resumen_tela_interactivo()
