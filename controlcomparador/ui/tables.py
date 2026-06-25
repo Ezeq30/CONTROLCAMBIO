@@ -338,6 +338,8 @@ def _mostrar_bases_por_apuesta(datos: dict[int, dict]) -> None:
         d = datos[num_carrera]
         apuestas = d.get("apuestas", {})
         for cod, val in apuestas.items():
+            if cod in ("GAN", "SEG", "TER"):
+                continue
             grupos.setdefault((cod, val), []).append(num_carrera)
 
     total = len(datos)
@@ -493,7 +495,10 @@ def exportar_resumen_html(datos: dict[int, dict], ruta_pdf: str | Path, ruta_sal
         entries = [(v, carreras) for (c, v), carreras in grupos.items() if c == cod]
         entries.sort(key=lambda x: (0, x[0]) if x[0] is not None else (1, 0))
         for val, carreras in entries:
-            carrera_str = _format_carreras_list(carreras, total)
+            if len(entries) == 1:
+                carrera_str = "ALL"
+            else:
+                carrera_str = _format_carreras_list(carreras, total)
             filas.append((carrera_str, cod, formato_valor(val)))
 
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
