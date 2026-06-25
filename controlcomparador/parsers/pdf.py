@@ -87,19 +87,24 @@ def obtener_caballos_por_carrera(ruta_pdf: str | Path) -> dict[int, int]:
     import pypdf
     reader = pypdf.PdfReader(ruta_pdf)
     resultado: dict[int, int] = {}
+    ultima_carrera: int | None = None
     for num_pagina in range(len(reader.pages)):
         texto = reader.pages[num_pagina].extract_text() or ""
         m_carrera = PATRON_CARRERA_PDF.search(texto)
-        if not m_carrera:
-            continue
-        num_carrera = int(m_carrera.group(1))
-        numeros_caballos = set()
-        for m in PATRON_CABALLO.finditer(texto):
-            num = int(m.group(1))
-            if 1 <= num <= 24:
-                numeros_caballos.add(num)
-        cantidad = max(numeros_caballos) if numeros_caballos else 0
-        resultado[num_carrera] = cantidad
+        if m_carrera:
+            ultima_carrera = int(m_carrera.group(1))
+            numeros_caballos = set()
+            for m in PATRON_CABALLO.finditer(texto):
+                num = int(m.group(1))
+                if 1 <= num <= 24:
+                    numeros_caballos.add(num)
+            cantidad = max(numeros_caballos) if numeros_caballos else 0
+            resultado[ultima_carrera] = cantidad
+        elif ultima_carrera is not None:
+            for m in PATRON_CABALLO_TELA.finditer(texto):
+                num = int(m.group(1))
+                if 1 <= num <= 24:
+                    resultado[ultima_carrera] = max(resultado.get(ultima_carrera, 0), num)
     return resultado
 
 
@@ -213,8 +218,10 @@ def _obtener_apuestas_tela_oficial(ruta_pdf: str | Path) -> list[list]:
     import pypdf
     reader = pypdf.PdfReader(ruta_pdf)
     resultado: list[list] = []
+    ultima_carrera: int | None = None
+    paginas_procesadas: set[int] = set()
 
-    for pagina in reader.pages:
+    for num_pagina, pagina in enumerate(reader.pages):
         texto = pagina.extract_text() or ""
         lineas = texto.split("\n")
         if not lineas:
@@ -227,6 +234,8 @@ def _obtener_apuestas_tela_oficial(ruta_pdf: str | Path) -> list[list]:
         ]
         if not apuestas_indices:
             continue
+
+        paginas_procesadas.add(num_pagina)
 
         for idx, start_idx in enumerate(apuestas_indices):
             end_idx = apuestas_indices[idx + 1] if idx + 1 < len(apuestas_indices) else len(lineas)
@@ -273,6 +282,8 @@ def _obtener_apuestas_tela_oficial(ruta_pdf: str | Path) -> list[list]:
             if num_carrera is None:
                 continue
 
+            ultima_carrera = num_carrera
+
             # --- Caballos ---
             horse_nums: set[int] = set()
             in_horse_block = False
@@ -313,6 +324,19 @@ def _obtener_apuestas_tela_oficial(ruta_pdf: str | Path) -> list[list]:
                     if cod not in apuestas_vistas:
                         resultado.append([num_carrera, num_caballos, cod, val])
                         apuestas_vistas.add(cod)
+
+    # --- Paginas sin APUESTAS (p.ej. ultima hoja con caballo extra) ---
+    if ultima_carrera is not None:
+        for num_pagina, pagina in enumerate(reader.pages):
+            if num_pagina in paginas_procesadas:
+                continue
+            texto = pagina.extract_text() or ""
+            for m in PATRON_CABALLO_TELA.finditer(texto):
+                num = int(m.group(1))
+                if 1 <= num <= 30:
+                    for item in resultado:
+                        if item[0] == ultima_carrera:
+                            item[1] = max(item[1], num)
 
     return resultado
 
