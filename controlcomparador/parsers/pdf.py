@@ -257,13 +257,19 @@ def _obtener_apuestas_tela_oficial(ruta_pdf: str | Path) -> list[list]:
                         if s not in extra_bets:
                             extra_bets.append(s)
 
-            # --- Nro de carrera ---
+            # --- Nro de carrera (buscar ANTES del marcador APUESTAS:) ---
             num_carrera = None
-            for l in race_lines:
-                s = l.strip()
+            for back in range(start_idx - 1, max(start_idx - 15, -1), -1):
+                s = lineas[back].strip()
                 if s.isdigit() and 1 <= int(s) <= 30:
                     num_carrera = int(s)
                     break
+            if num_carrera is None:
+                for l in race_lines:
+                    s = l.strip()
+                    if s.isdigit() and 1 <= int(s) <= 30:
+                        num_carrera = int(s)
+                        break
             if num_carrera is None:
                 continue
 
@@ -362,13 +368,19 @@ def extraer_pases_tela_oficial(ruta_pdf: str | Path) -> dict[int, dict[str, set[
             end_idx = apuestas_indices[idx + 1] if idx + 1 < len(apuestas_indices) else len(lineas)
             race_lines = lineas[start_idx:end_idx]
 
-            # Extraer nro de carrera
+            # Extraer nro de carrera (buscar ANTES del marcador APUESTAS:)
             num_carrera = None
-            for l in race_lines:
-                s = l.strip()
+            for back in range(start_idx - 1, max(start_idx - 15, -1), -1):
+                s = lineas[back].strip()
                 if s.isdigit() and 1 <= int(s) <= 30:
                     num_carrera = int(s)
                     break
+            if num_carrera is None:
+                for l in race_lines:
+                    s = l.strip()
+                    if s.isdigit() and 1 <= int(s) <= 30:
+                        num_carrera = int(s)
+                        break
             if num_carrera is None:
                 continue
 
