@@ -579,6 +579,10 @@ def _mapear_apuesta_oficial(nombre: str) -> Optional[str]:
     if n in {"ganador", "segundo", "tercero"}:
         return None
     n = " ".join(n.split())
+    for sufijo in (" acumulado", " corrida", " al reves", " atras"):
+        if n.endswith(sufijo):
+            n = n[:-len(sufijo)].strip()
+            break
     if "doble extra" in n or n == "doble":
         return "DOB"
     if n in {"5 y 6", "5y6", "5 & 6"}:
