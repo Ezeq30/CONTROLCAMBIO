@@ -14,9 +14,14 @@ PATRON_APUESTA_VALOR = re.compile(
     re.IGNORECASE,
 )
 
-# Apuestas a excluir: desde 2do pase en adelante
+# Apuestas a excluir: desde 2do pase en adelante (último flexible por encoding PDF)
 PATRON_EXCLUIR_PASE_SIN_FINAL = re.compile(
-    r"2do\s*\.?\s*p\s*a\s*s\s*e|3er\s*\.?\s*p\s*a\s*s\s*e|4to\s*\.?\s*p\s*a\s*s\s*e|5to\s*\.?\s*p\s*a\s*s\s*e|ultimo\s+p\s*a\s*s\s*e",
+    r"2do\s*\.?\s*p\s*a\s*s\s*e"
+    r"|3er\s*\.?\s*p\s*a\s*s\s*e"
+    r"|4to\s*\.?\s*p\s*a\s*s\s*e"
+    r"|5to\s*\.?\s*p\s*a\s*s\s*e"
+    r"|6to\s*\.?\s*p\s*a\s*s\s*e"
+    r"|[úu\u00fa]?ltimo\s*\.?\s*p\s*a\s*s\s*e",
     re.IGNORECASE,
 )
 PATRON_FINAL = re.compile(r"\bfinal\b|final\s*pase", re.IGNORECASE)
@@ -24,7 +29,10 @@ PATRON_PRIMER_PASE = re.compile(r"\b1er\s*\.?\s*p\s*a\s*s\s*e\b|\b1re\s*\.?\s*p\
 
 # Patrón para detectar pases en tela oficial (Cuaterna 1er.Pase, Cuaterna Con Jackpot 1er.Pase, etc.)
 PATRON_PASE_TELA = re.compile(
-    r"(cuaterna|quintuplo|triplo|cadena)\s+(?:con\s+jackpot\s+)?(1er\s*\.?\s*p\s*a\s*s\s*e|2do\s*\.?\s*p\s*a\s*s\s*e|3er\s*\.?\s*p\s*a\s*s\s*e|4to\s*\.?\s*p\s*a\s*s\s*e|5to\s*\.?\s*p\s*a\s*s\s*e|6to\s*\.?\s*p\s*a\s*s\s*e|ultimo\s+p\s*a\s*s\s*e)",
+    r"(cuaterna|quintuplo|triplo|cadena)\s+(?:con\s+jackpot\s+)?(?:selectivo\s+)?"
+    r"(1er\s*\.?\s*p\s*a\s*s\s*e|2do\s*\.?\s*p\s*a\s*s\s*e|3er\s*\.?\s*p\s*a\s*s\s*e"
+    r"|4to\s*\.?\s*p\s*a\s*s\s*e|5to\s*\.?\s*p\s*a\s*s\s*e|6to\s*\.?\s*p\s*a\s*s\s*e"
+    r"|[úu\u00fa]?ltimo\s*\.?\s*p\s*a\s*s\s*e)",
     re.IGNORECASE,
 )
 

@@ -34,6 +34,9 @@ def es_apuesta_excluida(nombre: str) -> bool:
         return False
     if PATRON_EXCLUIR_PASE_SIN_FINAL.search(nombre):
         return True
+    m_pase = PATRON_PASE_TELA.search(nombre)
+    if m_pase and not PATRON_PRIMER_PASE.search(m_pase.group(2)):
+        return True
     if PATRON_FINAL.search(nombre):
         if PATRON_PRIMER_PASE.search(nombre):
             return False

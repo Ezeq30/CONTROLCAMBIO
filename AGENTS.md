@@ -63,7 +63,7 @@ pyinstaller ControlComparador.spec
 - `es_tela_oficial(ruta)` — detecta por "Programa Depurado" en texto
 - `_obtener_apuestas_tela_oficial(ruta)` — extrae apuestas anclado por líneas `APUESTAS:` (no por `Premio`), soporta "Clásico" como header de carrera
 - `_parsear_bets_tela(texto)` — parsea línea "Nombre $ Valor, ..." con filtros:
-  - **`es_apuesta_excluida(nombre)`**: excluye pases que no son 1er.Pase (2do, 3er, 4to, 5to, último, final) pero mantiene 1er.Pase y Final 1er.Pase
+  - **`es_apuesta_excluida(nombre)`**: excluye pases que no son 1er.Pase (2do–6to, último, final) pero mantiene 1er.Pase y Final 1er.Pase. Refuerzo con `PATRON_PASE_TELA`: si matchea pase distinto de 1er → excluir. Ver bug fix "último Pase encoding" abajo.
   - **`APUESTAS_SIN_COMPARAR_VALOR`**: GAN/SEG/TER se extraen con valor vacío (solo presencia)
 - `extraer_pases_tela_oficial(ruta)` — extrae pases de tela oficial. Busca líneas después de "Bolsa Total:" y antes del nro de carrera, parsea apuestas pick con `$ Valor` y pase name (1er.Pase, 2do.Pase, etc.). Usa `_normalizar_pase()` para formato consistente. Retorna `dict[int, dict[str, set[str]]]` → `{nro_carrera: {codigo: {pase_name, ...}}}`
 - `_normalizar_pase(texto)` — normaliza nombres de pase: "1er.Pase", "2do.Pase", "3er.Pase", "4to.Pase", "5to.Pase", "Último.Pase", "Final.1er.Pase"
@@ -76,9 +76,10 @@ pyinstaller ControlComparador.spec
 - `APUESTAS_IGNORAR_LAPLATA = {"GAN", "SEG", "TER", "QTN"}` — ignoradas del lado reporte en La Plata
 - `PASES_POR_APUESTA = {"TPL": ["1er.Pase", "2do.Pase", "3er.Pase"], ...}` — dict de código → lista ordenada de pases esperados
 - `PASE_ORDER = ["1er.Pase", "2do.Pase", "3er.Pase", "4to.Pase", "5to.Pase", "Último.Pase", "Final.1er.Pase"]` — orden global de todos los pases posibles
-- `PATRON_EXTRA_BETS_PASE = re.compile(...)` — regex extrae "Apuesta $ Valor" de líneas de pase
-- `PATRON_FINAL = re.compile(r"\bFinal\b", re.IGNORECASE)` — detecta "Final"
-- `PATRON_PRIMER_PASE = re.compile(r"\b1[.:]\s*er\b", re.IGNORECASE)` — detecta "1er"
+- `PATRON_EXCLUIR_PASE_SIN_FINAL` — excluye 2do–6to y **último** pase; patrón `[úu]?ltimo` tolera encoding corrupto de pypdf (`Cuaternaltimo`, `Iltimo`, ``)
+- `PATRON_PASE_TELA` — detecta picks en líneas de pase; incluye `(?:selectivo\s+)?` para "Triplo Selectivo 1er.Pase"
+- `PATRON_FINAL` — detecta "Final"
+- `PATRON_PRIMER_PASE` — detecta "1er.Pase"
 
 #### detector.py
 - `_clasificar_pdf(ruta)` — detecta "Programa Depurado" → `"san_isidro"` (tela oficial usa mismo comparador)
@@ -145,10 +146,16 @@ pyinstaller ControlComparador.spec
 - `validar_pick_conflict()` en `parsers/report.py` chequea que ninguna carrera tenga dos o más picks
 - Integrado en `comparar_pdf_y_reporte()`, `comparar_planilla_con_reporte()` y `_validar_carreras_tela()`
 
+**Falsos positivos picks en tela oficial (último Pase / encoding PDF) — julio 2026:**
+- **Síntoma:** comparación TELA vs REPORTE reportaba picks "solo en PDF" (QTN, CAD, TPL, QTP) en carreras donde la tela no los tenía como apuesta base (ej. C4, C6, C7, C8, C10).
+- **Causa:** líneas `extra_bets` (post `Bolsa Total:`) listan pases en una sola línea comma-separated. pypdf extrae "Último Pase" corrupto (`Cuaternaltimo`, `Iltimo`, carácter ``) y el regex `ultimo\s+pase` no excluía esas entradas; `_parsear_bets_tela()` las agregaba como apuestas con valor `None`.
+- **Fix:** `PATRON_EXCLUIR_PASE_SIN_FINAL` ampliado (`6to.Pase`, `[úu]?ltimo`); `PATRON_PASE_TELA` con `selectivo` y mismo último flexible; `es_apuesta_excluida()` excluye si `PATRON_PASE_TELA` matchea y el pase ≠ 1er.Pase.
+- **Alcance:** aplica a **todos** los flujos (menú manual San Isidro, auto-detect, CLI `san-isidro`, resumen tela, OFICIAL vs POSTING) porque todos usan `obtener_apuestas_por_carrera()` → `_obtener_apuestas_tela_oficial()`.
+- **Tests:** `tests/test_tela_oficial.py` (exclusión, líneas extra, integración con PDF real).
+- **Regla de negocio:** solo `1er.Pase` con `$` en extra_bets cuenta como pick base de esa carrera; 2do–6to y último son solo secuencia de pases (`extraer_pases_tela_oficial()`).
+
 ### Próximas mejoras planeadas
 
-- Auto-detect: pasar una carpeta y que busque automáticamente los archivos PDF/TXT/XLS
-- Tests con pytest
 - Modo batch para procesar múltiples hipódromos
 
 <!-- gitnexus:start -->
