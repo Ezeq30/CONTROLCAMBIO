@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Meeting date="2026-01-01" track="Hipodromo Desconocido" trackAb="XX" country="ARG">
+  <Races>
+    <Race raceNumber="1">
+      <Starters>
+        <Starter name="X"/>
+      </Starters>
+    </Race>
+  </Races>
+</Meeting>

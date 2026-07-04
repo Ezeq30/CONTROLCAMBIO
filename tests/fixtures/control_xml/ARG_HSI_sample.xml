@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Meeting date="2026-07-03" meetingNumber="61" track="Hipódromo de San Isidro" trackAb="SI" country="ARG">
+  <Races>
+    <Race raceNumber="1">
+      <RaceNumber>1</RaceNumber>
+      <Starters>
+        <Starter name="CABALLO A" retired="false"/>
+        <Starter name="CABALLO B" retired="false"/>
+        <Starter name="CABALLO C" retired="true"/>
+      </Starters>
+    </Race>
+    <Race raceNumber="2">
+      <RaceNumber>2</RaceNumber>
+      <Starters>
+        <Starter name="CABALLO D" retired="false"/>
+        <Starter name="CABALLO E" retired="false"/>
+      </Starters>
+    </Race>
+  </Races>
+</Meeting>

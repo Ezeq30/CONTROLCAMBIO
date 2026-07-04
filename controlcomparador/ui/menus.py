@@ -6,11 +6,11 @@ from pathlib import Path
 from typing import Optional
 
 from rich.panel import Panel
-from rich.prompt import Prompt, IntPrompt
 from rich.table import Table
 from rich import box
 
-from controlcomparador.ui.console import console
+from controlcomparador import __version__
+from controlcomparador.ui.console import console, actualizar_ancho_consola
 from controlcomparador.ui.tables import (
     imprimir_tabla_san_isidro,
     imprimir_tablas_palermo,
@@ -26,6 +26,22 @@ def limpiar_pantalla() -> None:
         os.system("cls" if os.name == "nt" else "clear")
     except Exception:
         pass
+    actualizar_ancho_consola()
+
+
+def pedir_opcion(mensaje: str, default: str = "") -> str:
+    """Input de menu: evita cursor desalineado de Rich Prompt en consola Windows."""
+    import sys
+
+    actualizar_ancho_consola()
+    console.print(mensaje, end=" ")
+    sys.stdout.flush()
+    try:
+        resp = input()
+    except EOFError:
+        raise
+    resp = resp.strip()
+    return resp if resp else default
 
 
 def seleccionar_archivo_ruta(mensaje: str, extensiones: set[str]) -> Optional[str]:
@@ -135,8 +151,8 @@ def mostrar_menu_archivos(
         else:
             console.print(f"  {nombre}: [dim](ninguno)[/dim]")
 
-    opcion = Prompt.ask("\n[bold]Elija una opcion[/bold]", default="")
-    return opcion.strip()
+    opcion = pedir_opcion("\n[bold]Elija una opcion[/bold]:")
+    return opcion
 
 
 def menu_auto_detect(
@@ -162,7 +178,7 @@ def menu_auto_detect(
         idx += 1
     table.add_row("0", "Cancelar")
     console.print(table)
-    opcion = Prompt.ask("\n[bold]Seleccione el hipodromo a comparar[/bold]", default="")
+    opcion = pedir_opcion("\n[bold]Seleccione el hipodromo a comparar[/bold]:")
     try:
         num = int(opcion)
         if num == 0:
@@ -176,7 +192,7 @@ def menu_auto_detect(
 
 def menu_principal() -> int:
     limpiar_pantalla()
-    console.rule("[bold]CONTROL COMPARADOR[/bold]")
+    console.rule(f"[bold]CONTROL COMPARADOR[/bold] v{__version__}")
     table = Table(box=box.HEAVY, header_style="bold cyan")
     table.add_column("Op.", style="bold yellow", width=6)
     table.add_column("Hipodromo")
@@ -184,9 +200,13 @@ def menu_principal() -> int:
     table.add_row("2", "PALERMO")
     table.add_row("3", "LA PLATA")
     table.add_row("4", "AUTO-DETECT (carpeta)")
-    table.add_row("5", "Salir")
+    table.add_row("5", "CONTROL XML")
+    table.add_row("6", "Salir")
     console.print(table)
-    opcion = Prompt.ask("\n[bold]Seleccione el hipodromo[/bold]", default="")
+    try:
+        opcion = pedir_opcion("\n[bold]Seleccione el hipodromo[/bold]:")
+    except EOFError:
+        return 6
     try:
         return int(opcion)
     except ValueError:

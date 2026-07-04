@@ -130,6 +130,13 @@ class AgenteComparacion:
         apuestas = obtener_apuestas_por_carrera(ruta_pdf)
         datos_pdf = normalizar_pdf(ruta_pdf, apuestas_raw=apuestas)
         datos_posting = merge_posting_prices(rutas_posting)
+        return self.comparar_oficial_posting_con_datos(datos_pdf, datos_posting)
+
+    def comparar_oficial_posting_con_datos(
+        self,
+        datos_pdf: dict,
+        datos_posting: tuple,
+    ) -> dict:
         coincide, diferencias = comparar_oficial_con_posting(datos_pdf, datos_posting)
         return {"coincide": coincide, "diferencias": diferencias}
 

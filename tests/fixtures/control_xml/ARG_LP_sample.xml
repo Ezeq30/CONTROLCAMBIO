@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="ISO-8859-15"?>
+<Meeting date="2026-07-05" meetingNumber="63" track="Hipodromo de La Plata" trackAb="LP" country="ARG">
+  <Races>
+    <Race raceNumber="1">
+      <RaceNumber>1</RaceNumber>
+      <Starters>
+        <Starter name="Tina Wells Song" retired="" debut=""/>
+        <Starter name="Stormy Talentosa" retired="" debut=""/>
+        <Starter name="Mestasa" retired="" debut=""/>
+        <Starter name="Retirada" retired="true" debut=""/>
+      </Starters>
+    </Race>
+    <Race raceNumber="2">
+      <RaceNumber>2</RaceNumber>
+      <Starters>
+        <Starter name="Uno" retired="" debut=""/>
+        <Starter name="Dos" retired="" debut=""/>
+      </Starters>
+    </Race>
+  </Races>
+</Meeting>

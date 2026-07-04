@@ -58,6 +58,7 @@ MAPEO_ABREVIATURAS: dict[str, str] = {
     "exacta": "EXA",
     "trifecta": "TRI",
     "imperfecta": "IMP",
+    "imperfecta extra": "IMP",
     "cuatrifecta": "CUA",
     "doble": "DOB",
     "triplo": "TPL",

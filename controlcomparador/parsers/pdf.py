@@ -61,7 +61,10 @@ def abreviar_apuesta(nombre: str) -> str:
     nombre = (nombre or "").strip()
     if not nombre:
         return nombre
-    return MAPEO_ABREVIATURAS.get(nombre.lower(), nombre)
+    clave = nombre.lower()
+    if clave in MAPEO_ABREVIATURAS:
+        return MAPEO_ABREVIATURAS[clave]
+    return MAPEO_ABREVIATURAS.get(clave.split()[0], nombre)
 
 
 def obtener_carreras_por_pagina(ruta_pdf: str | Path) -> list[dict]:
@@ -156,7 +159,8 @@ def _obtener_apuestas_programa_oficial(ruta_pdf: str | Path) -> list[list]:
                     p_norm = normalizar_nombre_apuesta(p)
                     p_cod = abreviar_apuesta(p_norm)
                     if p_cod in CODIGOS_APUESTA_VALIDOS:
-                        resultado.append([num_carrera, cantidad_caballos, p_cod, ""])
+                        valor_ap = "" if p_cod in APUESTAS_SIN_COMPARAR_VALOR else valor
+                        resultado.append([num_carrera, cantidad_caballos, p_cod, valor_ap])
                 continue
             apuesta = apuesta_bruta
             if "," in apuesta:
@@ -217,129 +221,137 @@ def _parsear_bets_tela(texto: str) -> list[tuple[str, str]]:
     return resultado
 
 
+def _segmento_entre_apuestas(
+    paginas: list[list[str]],
+    start_pi: int,
+    start_li: int,
+    end_pi: int,
+    end_li: int,
+) -> list[str]:
+    """Lineas desde APUESTAS actual (inclusive) hasta el siguiente (exclusive), cross-page."""
+    if start_pi == end_pi:
+        return paginas[start_pi][start_li:end_li]
+    lineas: list[str] = []
+    lineas.extend(paginas[start_pi][start_li:])
+    for pi in range(start_pi + 1, end_pi):
+        lineas.extend(paginas[pi])
+    if end_pi < len(paginas):
+        lineas.extend(paginas[end_pi][:end_li])
+    return lineas
+
+
+def _contar_caballos_tela(lineas: list[str]) -> int:
+    horse_nums: set[int] = set()
+    in_horse_block = False
+    for l in lineas:
+        s = l.strip()
+        if "CHAQUETILLAS" in s:
+            in_horse_block = False
+            continue
+        if re.search(r"\bCABALLO\b", s, re.IGNORECASE) and "JOCKEY" in s.upper():
+            in_horse_block = True
+            continue
+        if in_horse_block:
+            if not s or s.startswith("Bolsa") or s.startswith("Total") or s.startswith("*"):
+                continue
+            if s.isdigit():
+                continue
+            if re.match(r"\d{1,2}:\d{2}", s):
+                continue
+            m = PATRON_CABALLO_TELA.search(s)
+            if m:
+                num = int(m.group(1))
+                if 1 <= num <= 30:
+                    horse_nums.add(num)
+    return len(horse_nums) if horse_nums else 0
+
+
+def _numero_carrera_tela(
+    paginas: list[list[str]],
+    start_pi: int,
+    start_li: int,
+    race_lines: list[str],
+) -> int | None:
+    lineas_pag = paginas[start_pi]
+    for back in range(start_li - 1, max(start_li - 15, -1), -1):
+        s = lineas_pag[back].strip()
+        if s.isdigit() and 1 <= int(s) <= 30:
+            return int(s)
+    for l in race_lines:
+        s = l.strip()
+        if s.isdigit() and 1 <= int(s) <= 30:
+            return int(s)
+    return None
+
+
+def _extraer_apuestas_y_extras_tela(race_lines: list[str]) -> tuple[str, list[str]]:
+    texto_apuestas = ""
+    for l in race_lines:
+        s = l.strip()
+        if s.upper().startswith("APUESTAS:"):
+            texto_apuestas = s[len("APUESTAS:"):].strip()
+            break
+
+    extra_bets: list[str] = []
+    found_bolsa = False
+    for l in race_lines:
+        s = l.strip()
+        if "Bolsa Total:" in s:
+            found_bolsa = True
+            continue
+        if found_bolsa:
+            if s.isdigit() and 1 <= int(s) <= 30:
+                break
+            if "CHAQUETILLAS" in s:
+                break
+            if PATRON_EXTRA_BETS.search(s) and "$" in s:
+                if s not in extra_bets:
+                    extra_bets.append(s)
+
+    return texto_apuestas, extra_bets
+
+
 def _obtener_apuestas_tela_oficial(ruta_pdf: str | Path) -> list[list]:
     import pypdf
     reader = pypdf.PdfReader(ruta_pdf)
+    paginas = [(p.extract_text() or "").split("\n") for p in reader.pages]
+
+    apuestas_pos: list[tuple[int, int]] = []
+    for pi, lineas in enumerate(paginas):
+        for i, l in enumerate(lineas):
+            if l.strip().upper().startswith("APUESTAS:"):
+                apuestas_pos.append((pi, i))
+
     resultado: list[list] = []
-    ultima_carrera: int | None = None
-    paginas_procesadas: set[int] = set()
 
-    for num_pagina, pagina in enumerate(reader.pages):
-        texto = pagina.extract_text() or ""
-        lineas = texto.split("\n")
-        if not lineas:
+    for idx, (start_pi, start_li) in enumerate(apuestas_pos):
+        if idx + 1 < len(apuestas_pos):
+            end_pi, end_li = apuestas_pos[idx + 1]
+        else:
+            end_pi = len(paginas) - 1
+            end_li = len(paginas[end_pi]) if paginas else 0
+
+        race_lines = _segmento_entre_apuestas(paginas, start_pi, start_li, end_pi, end_li)
+        texto_apuestas, extra_bets = _extraer_apuestas_y_extras_tela(race_lines)
+
+        num_carrera = _numero_carrera_tela(paginas, start_pi, start_li, race_lines)
+        if num_carrera is None:
             continue
 
-        # Find APUESTAS lines (each marks a unique race)
-        apuestas_indices = [
-            i for i, l in enumerate(lineas)
-            if l.strip().upper().startswith("APUESTAS:")
-        ]
-        if not apuestas_indices:
-            continue
+        num_caballos = _contar_caballos_tela(race_lines)
+        apuestas_vistas: set[str] = set()
 
-        paginas_procesadas.add(num_pagina)
+        if texto_apuestas:
+            for cod, val in _parsear_bets_tela(texto_apuestas):
+                if cod not in apuestas_vistas:
+                    resultado.append([num_carrera, num_caballos, cod, val])
+                    apuestas_vistas.add(cod)
 
-        for idx, start_idx in enumerate(apuestas_indices):
-            end_idx = apuestas_indices[idx + 1] if idx + 1 < len(apuestas_indices) else len(lineas)
-            race_lines = lineas[start_idx:end_idx]
-
-            # --- APUESTAS base ---
-            texto_apuestas = ""
-            for l in race_lines:
-                s = l.strip()
-                if s.upper().startswith("APUESTAS:"):
-                    texto_apuestas = s[len("APUESTAS:"):].strip()
-                    break
-
-            # --- Extra bets (despues de Bolsa Total, antes del nro de carrera) ---
-            extra_bets: list[str] = []
-            found_bolsa = False
-            for l in race_lines:
-                s = l.strip()
-                if "Bolsa Total:" in s:
-                    found_bolsa = True
-                    continue
-                if found_bolsa:
-                    if s.isdigit() and 1 <= int(s) <= 30:
-                        break
-                    if "CHAQUETILLAS" in s:
-                        break
-                    if PATRON_EXTRA_BETS.search(s) and "$" in s:
-                        if s not in extra_bets:
-                            extra_bets.append(s)
-
-            # --- Nro de carrera (buscar ANTES del marcador APUESTAS:) ---
-            num_carrera = None
-            for back in range(start_idx - 1, max(start_idx - 15, -1), -1):
-                s = lineas[back].strip()
-                if s.isdigit() and 1 <= int(s) <= 30:
-                    num_carrera = int(s)
-                    break
-            if num_carrera is None:
-                for l in race_lines:
-                    s = l.strip()
-                    if s.isdigit() and 1 <= int(s) <= 30:
-                        num_carrera = int(s)
-                        break
-            if num_carrera is None:
-                continue
-
-            ultima_carrera = num_carrera
-
-            # --- Caballos ---
-            horse_nums: set[int] = set()
-            in_horse_block = False
-            for l in race_lines:
-                s = l.strip()
-                if "CHAQUETILLAS" in s:
-                    in_horse_block = False
-                    continue
-                if re.search(r"\bCABALLO\b", s, re.IGNORECASE) and "JOCKEY" in s.upper():
-                    in_horse_block = True
-                    continue
-                if in_horse_block:
-                    if not s or s.startswith("Bolsa") or s.startswith("Total") or s.startswith("*"):
-                        continue
-                    if s.isdigit():
-                        continue
-                    if re.match(r"\d{1,2}:\d{2}", s):
-                        continue
-                    m = PATRON_CABALLO_TELA.search(s)
-                    if m:
-                        num = int(m.group(1))
-                        if 1 <= num <= 30:
-                            horse_nums.add(num)
-
-            num_caballos = len(horse_nums) if horse_nums else 0
-
-            # --- Combinar todas las apuestas ---
-            apuestas_vistas: set[str] = set()
-
-            if texto_apuestas:
-                for cod, val in _parsear_bets_tela(texto_apuestas):
-                    if cod not in apuestas_vistas:
-                        resultado.append([num_carrera, num_caballos, cod, val])
-                        apuestas_vistas.add(cod)
-
-            for eb in extra_bets:
-                for cod, val in _parsear_bets_tela(eb):
-                    if cod not in apuestas_vistas:
-                        resultado.append([num_carrera, num_caballos, cod, val])
-                        apuestas_vistas.add(cod)
-
-    # --- Paginas sin APUESTAS (p.ej. ultima hoja con caballo extra) ---
-    if ultima_carrera is not None:
-        for num_pagina, pagina in enumerate(reader.pages):
-            if num_pagina in paginas_procesadas:
-                continue
-            texto = pagina.extract_text() or ""
-            for m in PATRON_CABALLO_TELA.finditer(texto):
-                num = int(m.group(1))
-                if 1 <= num <= 30:
-                    for item in resultado:
-                        if item[0] == ultima_carrera:
-                            item[1] = max(item[1], num)
+        for eb in extra_bets:
+            for cod, val in _parsear_bets_tela(eb):
+                if cod not in apuestas_vistas:
+                    resultado.append([num_carrera, num_caballos, cod, val])
+                    apuestas_vistas.add(cod)
 
     return resultado
 
@@ -456,6 +468,10 @@ def normalizar_desde_lista_apuestas(apuestas_raw: list[list]) -> dict[int, dict]
     for num_carrera, cantidad_caballos, codigo_apuesta, valor_str in apuestas_raw:
         if num_carrera not in resultado:
             resultado[num_carrera] = {"caballos": cantidad_caballos, "apuestas": {}}
+        else:
+            resultado[num_carrera]["caballos"] = max(
+                resultado[num_carrera]["caballos"], cantidad_caballos
+            )
         valor_float = parsear_monto_str(valor_str)
         resultado[num_carrera]["apuestas"][codigo_apuesta] = valor_float
     return resultado
