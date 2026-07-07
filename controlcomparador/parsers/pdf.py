@@ -14,6 +14,7 @@ from controlcomparador.config import (
     PATRON_FINAL,
     PATRON_PRIMER_PASE,
     PATRON_PASE_TELA,
+    PATRON_ULTIMO_PASE,
     PATRON_LINEA_APUESTA,
     PATRON_CABALLO,
     PATRON_FECHA,
@@ -449,9 +450,12 @@ def _normalizar_pase(pase: str) -> str:
     """Normaliza nombre de pase a formato consistente.
     1er. Pase  -> 1er.Pase
     ultimo pase -> Ultimo Pase
+    Útimo Pase  -> Ultimo Pase (variante PDF sin 'l')
     1er.Pase   -> 1er.Pase
     2do .pase  -> 2do.Pase
     2do.pa se  -> 2do.Pase"""
+    if PATRON_ULTIMO_PASE.search(pase):
+        return "Ultimo Pase"
     pase = pase.strip().lower()
     pase = re.sub(r"p\s*a\s*s\s*e", "pase", pase)
     pase = re.sub(r"\s+", " ", pase)

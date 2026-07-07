@@ -18,6 +18,10 @@ class TestEsApuestaExcluida:
           ("Cuaterna último Pase", True),
           ("Cuaterna ltimo Pase", True),
           ("Cuaternaltimo Pase", True),
+          ("Cuaterna \u00datimo Pase", True),
+          ("Cuaterna \u00daltimo Pase", True),
+          ("Triplo Final Ultimo Pase", True),
+          ("Cuaterna Final \u00daltimo Pase", True),
           ("Cadena Con Jackpot Último Pase", True),
           ("Cadena Con Jackpot Iltimo Pase", True),
           ("Triplo Selectivo último Pase", True),
@@ -40,6 +44,17 @@ class TestEsApuestaExcluida:
 
 
 class TestParsearBetsTela:
+  def test_carrera_4_no_qtn_fantasma_ultimo_corrupto(self):
+      """PDF San Isidro 12-07-2026: 'Útimo' (U+00DA + timo, sin l) no debe crear QTN."""
+      extra = (
+          "Cuaterna Con Jackpot 2do.Pase, Cuaterna \u00datimo Pase, "
+          "Quintuplo 1er.Pase $1000, Cadena Con Jackpot 3er.Pase, Doble $2000"
+      )
+      parsed = dict(_parsear_bets_tela(extra))
+      assert parsed.get("QTP") == "1000"
+      assert parsed.get("DOB") == "2000"
+      assert "QTN" not in parsed
+
   def test_extra_linea_carrera_4_sin_picks_fantasma(self):
       extra = (
           "Cuaterna Con Jackpot 2do.Pase, Cuaterna último Pase, "

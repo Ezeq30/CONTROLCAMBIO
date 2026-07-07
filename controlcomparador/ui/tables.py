@@ -18,7 +18,7 @@ import re
 from dataclasses import dataclass
 from typing import Any, Optional
 
-from rich.console import Console
+from rich.console import Console, Group
 from rich.table import Table
 from rich.panel import Panel
 from rich.segment import Segment, Segments
@@ -33,6 +33,7 @@ from collections import defaultdict
 from controlcomparador.config import (
     ORDEN_APUESTAS, SYM_OK, SYM_FAIL, APUESTAS_PICK,
     PASES_POR_APUESTA, PASE_ORDER, APUESTAS_SIN_COMPARAR_VALOR,
+    APUESTAS_CARRERAS_ALL,
 )
 from controlcomparador.parsers.pdf import extraer_info_reunion_tela
 from controlcomparador.ui.console import console, ampliar_consola_windows, escribir_salida_fija, tema
@@ -1057,75 +1058,171 @@ def imprimir_tabla_posting_vs_reporte(
     return bloque
 
 
-def _validar_carreras_tela(datos: dict[int, dict]) -> dict[int, tuple[int, str]]:
-    """Valida cada carrera y retorna dict {carrera: (caballos, mensaje)}.
-    mensaje = 'OK' o uno o mas errores concatenados."""
-    resultados: dict[int, tuple[int, str]] = {}
+def _validar_carreras_tela(datos: dict[int, dict]) -> dict[int, tuple[int, list[tuple[str, str]]]]:
+    """Valida cada carrera. Retorna {carrera: (caballos, [(observación, regla), ...])}."""
+    resultados: dict[int, tuple[int, list[tuple[str, str]]]] = {}
     for num_carrera in sorted(datos.keys()):
         d = datos[num_carrera]
         cab = d.get("caballos", 0)
         apuestas = set(d.get("apuestas", {}).keys())
-        msgs: list[str] = []
+        violaciones: list[tuple[str, str]] = []
 
         if cab < 8 and "TER" in apuestas:
-            msgs.append("TER no debería estar")
+            violaciones.append(("TER no debería estar", "< 8 caballos → sin TER"))
 
         if cab >= 12:
             if "IMP" not in apuestas:
-                msgs.append("IMP debería estar")
+                violaciones.append(("IMP debería estar", "≥ 12 caballos → IMP obligatorio"))
             if "EXA" in apuestas:
-                msgs.append("EXA no debería estar")
+                violaciones.append(("EXA no debería estar", "≥ 12 caballos → sin EXA"))
 
         if cab <= 11:
             if "EXA" not in apuestas:
-                msgs.append("EXA debería estar")
+                violaciones.append(("EXA debería estar", "≤ 11 caballos → EXA obligatorio"))
             if "IMP" in apuestas:
-                msgs.append("IMP no debería estar")
+                violaciones.append(("IMP no debería estar", "≤ 11 caballos → sin IMP"))
 
         if cab == 4:
             if "SEG" in apuestas:
-                msgs.append("SEG no debería estar")
+                violaciones.append(("SEG no debería estar", "4 caballos → sin SEG/TRI/CUA"))
             if "TRI" in apuestas:
-                msgs.append("TRI no debería estar")
+                violaciones.append(("TRI no debería estar", "4 caballos → sin SEG/TRI/CUA"))
             if "CUA" in apuestas:
-                msgs.append("CUA no debería estar")
+                violaciones.append(("CUA no debería estar", "4 caballos → sin SEG/TRI/CUA"))
 
         if "EXA" in apuestas and "IMP" in apuestas:
-            msgs.append("EXA e IMP no pueden estar juntos")
+            violaciones.append((MSG_EXA_IMP_JUNTOS, MSG_EXA_IMP_JUNTOS))
 
         if "TRI" in apuestas and "CUA" in apuestas:
-            msgs.append("TRI y CUA no pueden estar juntos")
+            violaciones.append((MSG_TRI_CUA_JUNTOS, MSG_TRI_CUA_JUNTOS))
 
         picks = [cod for cod in apuestas if cod in APUESTAS_PICK]
         if len(picks) > 1:
-            msgs.append(f"apuestas pick conflictivas ({', '.join(picks)})")
+            violaciones.append((
+                f"apuestas pick conflictivas ({', '.join(picks)})",
+                "Una sola pick por carrera (TPL/QTN/QTP/CAD)",
+            ))
 
-        mensaje = "OK" if not msgs else " / ".join(msgs)
-        resultados[num_carrera] = (cab, mensaje)
+        resultados[num_carrera] = (cab, violaciones)
 
     return resultados
 
 
-def _mostrar_validaciones(resultados: dict[int, tuple[int, str]]) -> None:
-    t = Table(box=box.SIMPLE, header_style="bold", title="[bold]VALIDACIONES[/bold]")
+MSG_EXA_IMP_JUNTOS = "EXA e IMP no pueden estar juntas"
+MSG_TRI_CUA_JUNTOS = "TRI y CUA no pueden estar juntas"
+
+_REGLAS_CABALLOS_VALIDACION_TELA: tuple[str, ...] = (
+    "< 8 caballos → sin TER",
+    "≤ 11 caballos → EXA obligatorio",
+    "≤ 11 caballos → sin IMP",
+    "≥ 12 caballos → IMP obligatorio",
+    "≥ 12 caballos → sin EXA",
+    "4 caballos → sin SEG/TRI/CUA",
+)
+
+_REGLAS_PARES_VALIDACION_TELA: tuple[str, str] = (
+    MSG_EXA_IMP_JUNTOS,
+    MSG_TRI_CUA_JUNTOS,
+)
+
+_REGLA_PICK_VALIDACION_TELA = "Una sola pick por carrera (TPL/QTN/QTP/CAD)"
+
+_REGLAS_VALIDACION_TELA: tuple[str, ...] = (
+    *_REGLAS_CABALLOS_VALIDACION_TELA,
+    _REGLA_PICK_VALIDACION_TELA,
+)
+
+
+def _render_panel_reglas_validacion() -> Group:
+    lineas = [f"• {regla}" for regla in _REGLAS_CABALLOS_VALIDACION_TELA]
+    lineas.append(f"• {_REGLA_PICK_VALIDACION_TELA}")
+    pares = Table(box=None, show_header=False, pad_edge=False, expand=True)
+    pares.add_column(ratio=1)
+    pares.add_column(ratio=1)
+    pares.add_row(_REGLAS_PARES_VALIDACION_TELA[0], _REGLAS_PARES_VALIDACION_TELA[1])
+    return Group("\n".join(lineas), "", pares)
+
+
+_ANCHO_VALIDACIONES_TABLA = 54
+_ANCHO_VALIDACIONES_REGLAS = 46
+
+
+def _tabla_validaciones_carreras(
+    resultados: dict[int, tuple[int, list[tuple[str, str]]]],
+) -> Table:
+    t = Table(box=box.SIMPLE, header_style="bold", expand=False)
     t.add_column("Carrera", style="yellow", width=6)
     t.add_column("Caballos", justify="center", width=8)
-    t.add_column("Observación", width=60)
-
+    t.add_column("Observación", width=36)
     for num_carrera in sorted(resultados.keys()):
-        cab, mensaje = resultados[num_carrera]
-        if mensaje == "OK":
-            estilo = f"[green]{mensaje}[/green]"
+        cab, violaciones = resultados[num_carrera]
+        if not violaciones:
+            obs = "[green]OK[/green]"
         else:
-            estilo = f"[yellow]{mensaje}[/yellow]"
-        t.add_row(str(num_carrera), str(cab), estilo)
+            obs = " / ".join(obs for obs, _ in violaciones)
+            obs = f"[yellow]{obs}[/yellow]"
+        t.add_row(str(num_carrera), str(cab), obs)
+    return t
 
-    console.print(t)
+
+def _panel_reglas_validacion() -> Panel:
+    return Panel(
+        _render_panel_reglas_validacion(),
+        border_style="dim",
+        padding=(0, 1),
+        width=_ANCHO_VALIDACIONES_REGLAS,
+    )
+
+
+def _mostrar_validaciones(resultados: dict[int, tuple[int, list[tuple[str, str]]]]) -> None:
+    tabla = _tabla_validaciones_carreras(resultados)
+    panel_reglas = _panel_reglas_validacion()
+    ancho_izq = _ANCHO_VALIDACIONES_TABLA
+    ancho_der = _ANCHO_VALIDACIONES_REGLAS
+    tit_izq = _titulo_par_texto("VALIDACIONES", ancho_izq)
+    tit_der = _titulo_par_texto("Reglas validadas", ancho_der)
+    _imprimir_renderables_pegados(tit_izq, tit_der, ancho_izq, ancho_der, ancho_fijo=True)
+    _imprimir_renderables_pegados(tabla, panel_reglas, ancho_izq, ancho_der)
     console.print()
 
 
-def _format_carreras_list(carreras: list[int], total: int) -> str:
-    if len(carreras) == total:
+def _html_validaciones_tela(resultados: dict[int, tuple[int, list[tuple[str, str]]]]) -> str:
+    """Tabla HTML de validaciones tela oficial."""
+    html = '<div class="validaciones-row">\n'
+    html += '<div class="col-panel">\n'
+    html += '<div class="subtitle">VALIDACIONES</div>\n'
+    html += '<table class="validaciones-table">\n<thead><tr>'
+    html += "<th>Carrera</th><th>Caballos</th><th>Observación</th>"
+    html += "</tr></thead>\n<tbody>\n"
+    for num_carrera in sorted(resultados.keys()):
+        cab, violaciones = resultados[num_carrera]
+        if not violaciones:
+            html += (
+                f"<tr><td>{num_carrera}</td><td class=\"center\">{cab}</td>"
+                f"<td class=\"ok\">OK</td></tr>\n"
+            )
+        else:
+            obs = " / ".join(obs for obs, _ in violaciones)
+            html += (
+                f"<tr><td>{num_carrera}</td><td class=\"center\">{cab}</td>"
+                f"<td class=\"warn\">{obs}</td></tr>\n"
+            )
+    html += "</tbody></table>\n</div>\n"
+    html += '<div class="col-panel validaciones-reglas-panel">\n'
+    html += '<div class="subtitle">Reglas validadas</div>\n'
+    html += '<div class="validaciones-reglas"><ul>\n'
+    for regla in _REGLAS_VALIDACION_TELA:
+        html += f"<li>{regla}</li>\n"
+    html += "</ul>\n"
+    html += '<table class="validaciones-pares-table"><tr>'
+    html += f"<td>{_REGLAS_PARES_VALIDACION_TELA[0]}</td>"
+    html += f"<td>{_REGLAS_PARES_VALIDACION_TELA[1]}</td>"
+    html += "</tr></table></div>\n</div>\n</div>\n"
+    return html
+
+
+def _format_carreras_list(carreras: list[int], total: int, cod: str | None = None) -> str:
+    if len(carreras) == total and cod in APUESTAS_CARRERAS_ALL:
         return "ALL"
     carreras = sorted(carreras)
     ranges: list[str] = []
@@ -1142,16 +1239,26 @@ def _format_carreras_list(carreras: list[int], total: int) -> str:
     return ",".join(ranges)
 
 
-def _mostrar_bases_por_apuesta(datos: dict[int, dict]) -> None:
+def _agrupar_bases_por_apuesta(datos: dict[int, dict]) -> dict[tuple[str, float | None], list[int]]:
+    """Agrupa carreras por (código, valor) — misma fuente que la tabla BASES POR APUESTA."""
     grupos: dict[tuple[str, float | None], list[int]] = {}
     for num_carrera in sorted(datos.keys()):
-        d = datos[num_carrera]
-        apuestas = d.get("apuestas", {})
-        for cod, val in apuestas.items():
+        for cod, val in datos[num_carrera].get("apuestas", {}).items():
             if cod in ("GAN", "SEG", "TER"):
                 continue
             grupos.setdefault((cod, val), []).append(num_carrera)
+    return grupos
 
+
+def _texto_resumen_base_unica(carreras: list[int], cod: str, val: float) -> str:
+    """Un solo valor base en la reunión: 'unica' si es 1 carrera, 'todas' si son 2+."""
+    if len(carreras) > 1:
+        return f"{cod}: todas son de {formato_valor(val)}"
+    return f"{cod}: unica de {formato_valor(val)}"
+
+
+def _mostrar_bases_por_apuesta(datos: dict[int, dict]) -> None:
+    grupos = _agrupar_bases_por_apuesta(datos)
     total = len(datos)
     codes = _ordenar_codigos({cod for cod, _ in grupos.keys()})
 
@@ -1169,7 +1276,7 @@ def _mostrar_bases_por_apuesta(datos: dict[int, dict]) -> None:
     t.add_column("Base", justify="right", width=10)
 
     for idx, ((cod, val), carreras) in enumerate(ordered, 1):
-        t.add_row(str(idx), _format_carreras_list(carreras, total), cod, formato_valor(val))
+        t.add_row(str(idx), _format_carreras_list(carreras, total, cod), cod, formato_valor(val))
 
     console.print(t)
     console.print()
@@ -1261,12 +1368,14 @@ def _mostrar_resumen_bases_unicas(datos: dict[int, dict]) -> None:
             valores_por_codigo[cod].add(val)
 
     lineas: list[str] = []
+    grupos = _agrupar_bases_por_apuesta(datos)
     for cod in sorted(valores_por_codigo.keys()):
         vals = valores_por_codigo[cod]
         if len(vals) == 1:
             val = next(iter(vals))
             if val is not None:
-                lineas.append(f"{cod}: todas son de {formato_valor(val)}")
+                carreras = grupos.get((cod, val), [])
+                lineas.append(_texto_resumen_base_unica(carreras, cod, val))
 
     if not lineas:
         return
@@ -1288,15 +1397,7 @@ def imprimir_resumen_tela(datos: dict[int, dict], ruta: str) -> None:
 
 def exportar_resumen_html(datos: dict[int, dict], ruta_pdf: str | Path, ruta_salida: str | Path) -> None:
     info = extraer_info_reunion_tela(ruta_pdf)
-    grupos: dict[tuple[str, float | None], list[int]] = {}
-    for num_carrera in sorted(datos.keys()):
-        d = datos[num_carrera]
-        apuestas = d.get("apuestas", {})
-        for cod, val in apuestas.items():
-            if cod in ("GAN", "SEG", "TER"):
-                continue
-            grupos.setdefault((cod, val), []).append(num_carrera)
-
+    grupos = _agrupar_bases_por_apuesta(datos)
     total = len(datos)
     codes = _ordenar_codigos({cod for cod, _ in grupos.keys()})
 
@@ -1305,10 +1406,10 @@ def exportar_resumen_html(datos: dict[int, dict], ruta_pdf: str | Path, ruta_sal
         entries = [(v, carreras) for (c, v), carreras in grupos.items() if c == cod]
         entries.sort(key=lambda x: (0, x[0]) if x[0] is not None else (1, 0))
         for val, carreras in entries:
-            if len(entries) == 1:
+            if len(entries) == 1 and cod in APUESTAS_CARRERAS_ALL:
                 carrera_str = "ALL"
             else:
-                carrera_str = _format_carreras_list(carreras, total)
+                carrera_str = _format_carreras_list(carreras, total, cod)
             filas.append((carrera_str, cod, formato_valor(val)))
 
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -1362,6 +1463,53 @@ def exportar_resumen_html(datos: dict[int, dict], ruta_pdf: str | Path, ruta_sal
   .bases-table th:nth-child(1) {{ width: 50%; }}
   .bases-table th:nth-child(2) {{ width: 20%; }}
   .bases-table th:nth-child(3) {{ width: 30%; }}
+  .validaciones-table th:nth-child(1) {{ width: 10%; }}
+  .validaciones-table th:nth-child(2) {{ width: 12%; }}
+  .validaciones-table th:nth-child(3) {{ width: 78%; }}
+  .validaciones-row {{
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    padding: 0 14px 10px;
+  }}
+  .validaciones-row .col-panel {{
+    flex: 1;
+    min-width: 0;
+    border: 1px solid #e0e0e0;
+    border-radius: 4px;
+    overflow: hidden;
+  }}
+  .validaciones-row .col-panel .subtitle {{
+    margin: 0;
+  }}
+  .validaciones-reglas-panel .validaciones-reglas {{
+    padding: 4px 10px 10px;
+  }}
+  .validaciones-reglas {{
+    font-size: 12px;
+    color: #555;
+    padding: 4px 14px 10px;
+  }}
+  .validaciones-reglas ul {{
+    margin: 4px 0 0 18px;
+    padding: 0;
+  }}
+  .validaciones-reglas li {{
+    margin: 2px 0;
+  }}
+  .validaciones-pares-table {{
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+    color: #555;
+    margin-top: 6px;
+  }}
+  .validaciones-pares-table td {{
+    width: 50%;
+    padding: 2px 0;
+    vertical-align: top;
+  }}
+  td.center {{ text-align: center; }}
   .pases-table th:nth-child(1) {{ width: 5%; }}
   .pases-table th:nth-child(2) {{ width: 15%; }}
   .pases-table th:nth-child(3) {{ width: 62%; }}
@@ -1426,11 +1574,17 @@ def exportar_resumen_html(datos: dict[int, dict], ruta_pdf: str | Path, ruta_sal
         if len(vals) == 1:
             val = next(iter(vals))
             if val is not None:
-                resumen_lineas.append(f"<span class=\"resumen-base\">{cod}: todas son de {formato_valor(val)}</span>")
+                carreras = grupos.get((cod, val), [])
+                texto = _texto_resumen_base_unica(carreras, cod, val)
+                resumen_lineas.append(f"<span class=\"resumen-base\">{texto}</span>")
 
     if resumen_lineas:
         for linea in resumen_lineas:
             html += f'<div class="resumen-line">{linea}</div>\n'
+
+    # --- Validaciones por carrera ---
+    resultados_val = _validar_carreras_tela(datos)
+    html += _html_validaciones_tela(resultados_val)
 
     # --- Tabla de pases (secuencias) ---
     secuencias = _agrupar_pases_por_secuencia(datos)

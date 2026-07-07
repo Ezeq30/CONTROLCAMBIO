@@ -14,6 +14,14 @@ PATRON_APUESTA_VALOR = re.compile(
     re.IGNORECASE,
 )
 
+# Fragmento regex para "último pase" con variantes de encoding PDF (Útimo sin l, Último, etc.)
+_PASE_ULTIMO_FRAGMENT = (
+    r"ultimo"
+    r"|[úuU\u00fa\u00da]timo"
+    r"|[úuU\u00fa\u00da]?ltimo"
+)
+_PASE_ULTIMO_SUFFIX = rf"(?:{_PASE_ULTIMO_FRAGMENT})\s*\.?\s*p\s*a\s*s\s*e"
+
 # Apuestas a excluir: desde 2do pase en adelante (último flexible por encoding PDF)
 PATRON_EXCLUIR_PASE_SIN_FINAL = re.compile(
     r"2do\s*\.?\s*p\s*a\s*s\s*e"
@@ -21,18 +29,19 @@ PATRON_EXCLUIR_PASE_SIN_FINAL = re.compile(
     r"|4to\s*\.?\s*p\s*a\s*s\s*e"
     r"|5to\s*\.?\s*p\s*a\s*s\s*e"
     r"|6to\s*\.?\s*p\s*a\s*s\s*e"
-    r"|[úu\u00fa]?ltimo\s*\.?\s*p\s*a\s*s\s*e",
+    rf"|{_PASE_ULTIMO_SUFFIX}",
     re.IGNORECASE,
 )
+PATRON_ULTIMO_PASE = re.compile(rf"\b{_PASE_ULTIMO_SUFFIX}\b", re.IGNORECASE)
 PATRON_FINAL = re.compile(r"\bfinal\b|final\s*pase", re.IGNORECASE)
 PATRON_PRIMER_PASE = re.compile(r"\b1er\s*\.?\s*p\s*a\s*s\s*e\b|\b1re\s*\.?\s*p\s*a\s*s\s*e\b", re.IGNORECASE)
 
 # Patrón para detectar pases en tela oficial (Cuaterna 1er.Pase, Cuaterna Con Jackpot 1er.Pase, etc.)
 PATRON_PASE_TELA = re.compile(
-    r"(cuaterna|quintuplo|triplo|cadena)\s+(?:con\s+jackpot\s+)?(?:selectivo\s+)?"
+    r"(cuaterna|quintuplo|triplo|cadena)\s+(?:con\s+jackpot\s+)?(?:selectivo\s+)?(?:final\s+)?"
     r"(1er\s*\.?\s*p\s*a\s*s\s*e|2do\s*\.?\s*p\s*a\s*s\s*e|3er\s*\.?\s*p\s*a\s*s\s*e"
     r"|4to\s*\.?\s*p\s*a\s*s\s*e|5to\s*\.?\s*p\s*a\s*s\s*e|6to\s*\.?\s*p\s*a\s*s\s*e"
-    r"|[úu\u00fa]?ltimo\s*\.?\s*p\s*a\s*s\s*e)",
+    rf"|{_PASE_ULTIMO_SUFFIX})",
     re.IGNORECASE,
 )
 
@@ -97,6 +106,9 @@ APUESTAS_PICK: set[str] = {"TPL", "QTN", "QTP", "CAD"}
 
 # Apuestas a ignorar en reporte para La Plata
 APUESTAS_IGNORAR_LAPLATA: set[str] = {"GAN", "SEG", "TER", "QTN"}
+
+# Solo EXA/TRI/IMP pueden mostrar "ALL" en columna Carreras (resumen tela oficial)
+APUESTAS_CARRERAS_ALL: frozenset[str] = frozenset({"EXA", "TRI", "IMP"})
 
 # Orden lógico para mostrar apuestas
 ORDEN_APUESTAS: list[str] = [
