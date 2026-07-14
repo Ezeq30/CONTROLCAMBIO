@@ -130,3 +130,5 @@ class TestResumenBasesUnicas:
         assert "CAD: unica de 200" in html
         assert "QTP: todas son de 1000" in html
         assert "CAD: todas son de" not in html
+        assert "resumen-total" in html
+        assert " filas</span>" in html

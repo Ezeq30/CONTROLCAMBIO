@@ -163,9 +163,46 @@ def test_imprimir_par_muestra_ambas_tablas():
     assert "OFICIAL vs Reporte" in salida
     assert "Oficial" in salida
     assert "Rep." in salida or "Reporte" in salida
+    cols_izq = [c.header for c in bloque_izq.tabla.columns]
+    assert "Post." not in cols_izq
     cols_der = [c.header for c in bloque_der.tabla.columns]
     assert "Post." in cols_der
     _assert_salida_par_compacta(salida)
+
+
+def test_imprimir_par_san_isidro_tela_12_carreras_compacto():
+    datos_pdf = {
+        i: {"caballos": 10, "apuestas": {"GAN": None, "EXA": 2000.0, "TRI": 2000.0, "DOB": 2000.0}}
+        for i in range(1, 13)
+    }
+    datos_rep_meta = dict(datos_pdf)
+    datos_rep_flat = {i: d["apuestas"] for i, d in datos_pdf.items()}
+    posting = ({i: d["apuestas"] for i, d in datos_pdf.items()}, set())
+    bloque_izq = tables.imprimir_tabla_san_isidro(
+        datos_pdf, datos_rep_meta, posting,
+        fecha_reporte="12/07/2026", tipo_pdf="TELA OFICIAL",
+        imprimir=False, compacto=True, par=True,
+    )
+    bloque_der = tables.imprimir_tabla_posting_vs_reporte(
+        posting, (datos_rep_flat, set()),
+        datos_fuente=datos_pdf,
+        datos_reporte_meta=datos_rep_meta,
+        label_fuente="TELA OFICIAL",
+        imprimir=False, compacto=True, par=True,
+    )
+    cols_izq = [c.header for c in bloque_izq.tabla.columns]
+    assert "Post." not in cols_izq
+    cols_der = [c.header for c in bloque_der.tabla.columns]
+    assert "Post." in cols_der
+    console.width = 200
+    salida = _capturar_salida_par(
+        lambda: tables.imprimir_par_comparacion(bloque_izq, bloque_der)
+    )
+    ancho = _assert_salida_par_compacta(salida, min_lineas=40)
+    assert ancho <= 130
+    assert "\u2026" not in salida
+    assert "TELA OFICIAL vs Reporte" in salida
+    assert "│  12  " in salida or "│ 12   " in salida or " 12 " in salida
 
 
 def test_imprimir_par_palermo_14_carreras_compacto():

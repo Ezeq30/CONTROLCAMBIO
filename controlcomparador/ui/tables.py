@@ -713,9 +713,10 @@ def imprimir_tabla_san_isidro(
     label_pdf = tipo_pdf or "OFICIAL"
     titulo = f"COMPARACION {label_pdf} vs REPORTE"
 
+    incluir_posting_col = bool(datos_posting) and not par
     columnas_def = _perfil_columnas_comparacion(
         label_pdf,
-        con_posting=bool(datos_posting),
+        con_posting=incluir_posting_col,
         compacto=compacto,
         par=par,
     )
@@ -741,8 +742,8 @@ def imprimir_tabla_san_isidro(
         for idx, cod in enumerate(todos_codigos):
             v_pdf = pdf_ap.get(cod)
             v_rep = rep_ap.get(cod)
-            v_pos = pos_ap.get(cod) if datos_posting else None
-            if datos_posting:
+            v_pos = pos_ap.get(cod) if incluir_posting_col else None
+            if incluir_posting_col:
                 estado = _estado_tres_fuentes(v_pdf, v_rep, v_pos, label_pdf)
             else:
                 estado = _estado_apuesta(v_pdf, v_rep, label_pdf, "reporte")
@@ -761,7 +762,7 @@ def imprimir_tabla_san_isidro(
                 _celda_valor_rich(v_pdf, v_rep),
                 _celda_valor_rich(v_rep, v_pdf),
             ]
-            if datos_posting:
+            if incluir_posting_col:
                 celdas.append(_celda_valor_rich(v_pos, v_rep))
             celdas.append(estado)
             t.add_row(*celdas)
@@ -770,7 +771,7 @@ def imprimir_tabla_san_isidro(
                 carrera_str, cab_show, cod,
                 formato_valor(v_pdf), formato_valor(v_rep),
             ]
-            if datos_posting:
+            if incluir_posting_col:
                 fila_plana.append(formato_valor(v_pos))
             fila_plana.append(_estado_plano(estado))
             filas_html.append(fila_plana)
@@ -1186,11 +1187,10 @@ def _mostrar_validaciones(resultados: dict[int, tuple[int, list[tuple[str, str]]
     console.print()
 
 
-def _html_validaciones_tela(resultados: dict[int, tuple[int, list[tuple[str, str]]]]) -> str:
-    """Tabla HTML de validaciones tela oficial."""
-    html = '<div class="validaciones-row">\n'
-    html += '<div class="col-panel">\n'
-    html += '<div class="subtitle">VALIDACIONES</div>\n'
+def _html_panel_validaciones(resultados: dict[int, tuple[int, list[tuple[str, str]]]]) -> str:
+    """Panel HTML de validaciones por carrera."""
+    html = '<div class="grid-panel panel-validaciones">\n'
+    html += '<div class="section-title">VALIDACIONES</div>\n'
     html += '<table class="validaciones-table">\n<thead><tr>'
     html += "<th>Carrera</th><th>Caballos</th><th>Observación</th>"
     html += "</tr></thead>\n<tbody>\n"
@@ -1198,27 +1198,35 @@ def _html_validaciones_tela(resultados: dict[int, tuple[int, list[tuple[str, str
         cab, violaciones = resultados[num_carrera]
         if not violaciones:
             html += (
-                f"<tr><td>{num_carrera}</td><td class=\"center\">{cab}</td>"
+                f"<tr><td class=\"center\">{num_carrera}</td><td class=\"center\">{cab}</td>"
                 f"<td class=\"ok\">OK</td></tr>\n"
             )
         else:
             obs = " / ".join(obs for obs, _ in violaciones)
             html += (
-                f"<tr><td>{num_carrera}</td><td class=\"center\">{cab}</td>"
+                f"<tr><td class=\"center\">{num_carrera}</td><td class=\"center\">{cab}</td>"
                 f"<td class=\"warn\">{obs}</td></tr>\n"
             )
     html += "</tbody></table>\n</div>\n"
-    html += '<div class="col-panel validaciones-reglas-panel">\n'
-    html += '<div class="subtitle">Reglas validadas</div>\n'
-    html += '<div class="validaciones-reglas"><ul>\n'
-    for regla in _REGLAS_VALIDACION_TELA:
-        html += f"<li>{regla}</li>\n"
-    html += "</ul>\n"
-    html += '<table class="validaciones-pares-table"><tr>'
-    html += f"<td>{_REGLAS_PARES_VALIDACION_TELA[0]}</td>"
-    html += f"<td>{_REGLAS_PARES_VALIDACION_TELA[1]}</td>"
-    html += "</tr></table></div>\n</div>\n</div>\n"
     return html
+
+
+def _html_panel_reglas() -> str:
+    """Panel HTML de reglas validadas (una regla por fila)."""
+    html = '<div class="grid-panel panel-reglas">\n'
+    html += '<div class="section-title">Reglas validadas</div>\n'
+    html += '<table class="reglas-table">\n<tbody>\n'
+    for regla in _REGLAS_VALIDACION_TELA:
+        html += f"<tr><td>{regla}</td></tr>\n"
+    for regla in _REGLAS_PARES_VALIDACION_TELA:
+        html += f'<tr><td class="reglas-par">{regla}</td></tr>\n'
+    html += "</tbody></table>\n</div>\n"
+    return html
+
+
+def _html_validaciones_tela(resultados: dict[int, tuple[int, list[tuple[str, str]]]]) -> str:
+    """Bloque validaciones + reglas (compat tests / export parcial)."""
+    return _html_panel_validaciones(resultados) + _html_panel_reglas()
 
 
 def _format_carreras_list(carreras: list[int], total: int, cod: str | None = None) -> str:
@@ -1332,6 +1340,52 @@ def _agrupar_pases_por_secuencia(datos: dict[int, dict]) -> dict[str, list[tuple
     return resultado
 
 
+def _estado_pase_html(detalle: str, estado_rich: str) -> tuple[str, str]:
+    """Texto y clase CSS para tabla HTML de pases (mínima: OK o Falta: ...)."""
+    if "INCOMPLETA" in estado_rich:
+        texto = detalle.replace(".Pase", "").strip()
+        if not texto.startswith("Falta:"):
+            texto = f"Falta: {texto}"
+        return texto, "warn"
+    if "COMPLETA" in estado_rich:
+        return "OK", "ok"
+    texto = detalle.replace(".Pase", "").strip()
+    return texto or "?", "warn"
+
+
+def _html_panel_pases(datos: dict[int, dict]) -> str:
+    """Panel HTML compacto de pases: Ap. | Carreras | Estado."""
+    secuencias = _agrupar_pases_por_secuencia(datos)
+    if not secuencias:
+        return ""
+    html = '<div class="grid-panel panel-pases">\n'
+    html += '<div class="section-title">CONTROL DE PASES</div>\n'
+    html += '<table class="pases-table">\n<thead><tr>'
+    html += "<th>Ap.</th><th>Carreras</th><th class=\"center\">Estado</th>"
+    html += "</tr></thead>\n<tbody>\n"
+    for codigo in sorted(secuencias.keys()):
+        for sc, fin, detalle, estado in secuencias[codigo]:
+            texto_estado, clase = _estado_pase_html(detalle, estado)
+            html += (
+                f'<tr><td class="bet">{codigo}</td>'
+                f'<td class="center">C{sc}→C{fin}</td>'
+                f'<td class="center {clase}">{texto_estado}</td></tr>\n'
+            )
+    html += "</tbody></table>\n</div>\n"
+    return html
+
+
+def _html_bottom_grid(datos: dict[int, dict]) -> str:
+    """Paneles inferiores: reglas | pases (validaciones va arriba junto a bases)."""
+    panel_pases = _html_panel_pases(datos)
+    html = '<div class="bottom-grid">\n'
+    html += _html_panel_reglas()
+    if panel_pases:
+        html += panel_pases
+    html += "</div>\n"
+    return html
+
+
 def _mostrar_validacion_pases(datos: dict[int, dict]) -> None:
     secuencias = _agrupar_pases_por_secuencia(datos)
     if not secuencias:
@@ -1425,16 +1479,18 @@ def exportar_resumen_html(datos: dict[int, dict], ruta_pdf: str | Path, ruta_sal
   * {{ margin: 0; padding: 0; box-sizing: border-box; }}
   body {{
     font-family: Arial, Helvetica, sans-serif;
-    padding: 15px;
-    background: #fff;
+    padding: 12px;
+    background: #f5f5f5;
     color: #333;
   }}
   .container {{
-    width: fit-content;
-    max-width: 100%;
+    width: 100%;
+    max-width: 210mm;
+    margin: 0 auto;
     border: 1px solid #c8e6c9;
     border-radius: 6px;
     overflow: hidden;
+    background: #fff;
   }}
   .header {{
     background: #1b5e20;
@@ -1442,81 +1498,131 @@ def exportar_resumen_html(datos: dict[int, dict], ruta_pdf: str | Path, ruta_sal
     padding: 10px 14px;
   }}
   .header h1 {{ font-size: 14px; font-weight: 600; }}
-  .subtitle {{
-    font-size: 12px;
+  .section-title {{
+    font-size: 11px;
     font-weight: 600;
     color: #2e7d32;
-    padding: 8px 14px 4px;
+    padding: 6px 10px;
+    background: #f1f8e9;
+    border-bottom: 1px solid #c8e6c9;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
   }}
   table {{
     width: 100%;
     border-collapse: collapse;
-    font-size: 13px;
+    font-size: 12px;
   }}
   th {{
     background: #1b5e20;
     color: #fff;
-    padding: 5px 10px;
+    padding: 4px 8px;
     text-align: left;
     font-weight: 600;
+    font-size: 11px;
   }}
-  .bases-table th:nth-child(1) {{ width: 50%; }}
-  .bases-table th:nth-child(2) {{ width: 20%; }}
-  .bases-table th:nth-child(3) {{ width: 30%; }}
-  .validaciones-table th:nth-child(1) {{ width: 10%; }}
-  .validaciones-table th:nth-child(2) {{ width: 12%; }}
-  .validaciones-table th:nth-child(3) {{ width: 78%; }}
-  .validaciones-row {{
-    display: flex;
-    gap: 10px;
-    align-items: flex-start;
-    padding: 0 14px 10px;
+  .top-row {{
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    align-items: start;
+    border-bottom: 1px solid #c8e6c9;
   }}
-  .validaciones-row .col-panel {{
-    flex: 1;
-    min-width: 0;
-    border: 1px solid #e0e0e0;
-    border-radius: 4px;
-    overflow: hidden;
-  }}
-  .validaciones-row .col-panel .subtitle {{
-    margin: 0;
-  }}
-  .validaciones-reglas-panel .validaciones-reglas {{
-    padding: 4px 10px 10px;
-  }}
-  .validaciones-reglas {{
-    font-size: 12px;
-    color: #555;
-    padding: 4px 14px 10px;
-  }}
-  .validaciones-reglas ul {{
-    margin: 4px 0 0 18px;
-    padding: 0;
-  }}
-  .validaciones-reglas li {{
-    margin: 2px 0;
-  }}
-  .validaciones-pares-table {{
+  .section-bases {{
     width: 100%;
-    border-collapse: collapse;
-    font-size: 12px;
-    color: #555;
-    margin-top: 6px;
+    min-width: 0;
+    border-right: 1px solid #e0e0e0;
   }}
-  .validaciones-pares-table td {{
-    width: 50%;
-    padding: 2px 0;
-    vertical-align: top;
+  .bases-wrap {{
+    width: 100%;
   }}
+  /* Carreras flexible; Apuesta/Base fijas y chicas */
+  .bases-table {{
+    width: 100%;
+    table-layout: fixed;
+  }}
+  .bases-table th,
+  .bases-table td {{
+    padding: 4px 10px;
+  }}
+  .bases-table th:nth-child(1),
+  .bases-table td:nth-child(1) {{
+    text-align: left;
+    white-space: nowrap;
+  }}
+  .bases-table th:nth-child(2),
+  .bases-table td:nth-child(2) {{
+    width: 5em;
+    text-align: center;
+    white-space: nowrap;
+  }}
+  .bases-table th:nth-child(3),
+  .bases-table td:nth-child(3) {{
+    width: 5.5em;
+    text-align: right;
+    white-space: nowrap;
+  }}
+  .top-row .panel-validaciones {{
+    border-right: none;
+    height: 100%;
+  }}
+  .resumen-box {{
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 4px 16px;
+    padding: 5px 10px 6px;
+    background: #ffebee;
+    border-top: 1px solid #ffcdd2;
+    font-size: 10px;
+    color: #c62828;
+    font-weight: 600;
+  }}
+  .resumen-total {{
+    color: #1b5e20;
+    font-weight: 700;
+  }}
+  .bottom-grid {{
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    border-top: 2px solid #c8e6c9;
+    align-items: stretch;
+  }}
+  .grid-panel {{
+    min-width: 0;
+    border-right: 1px solid #e0e0e0;
+    display: flex;
+    flex-direction: column;
+    background: #fafdf9;
+  }}
+  .grid-panel:last-child {{ border-right: none; }}
+  .grid-panel .section-title {{
+    flex-shrink: 0;
+  }}
+  .grid-panel table {{
+    flex: 1;
+  }}
+  .panel-reglas .reglas-table {{
+    flex: 1;
+    background: #f1f8e9;
+  }}
+  .reglas-table td {{
+    padding: 2px 6px;
+    color: #333;
+    border-bottom: 1px solid #e0e0e0;
+  }}
+  .reglas-table td.reglas-par {{
+    color: #333;
+  }}
+  .validaciones-table th:nth-child(1) {{ width: 16%; }}
+  .validaciones-table th:nth-child(2) {{ width: 20%; }}
+  .validaciones-table th:nth-child(3) {{ width: 64%; }}
+  .pases-table th:nth-child(1) {{ width: 20%; }}
+  .pases-table th:nth-child(2) {{ width: 44%; }}
+  .pases-table th:nth-child(3) {{ width: 36%; }}
   td.center {{ text-align: center; }}
-  .pases-table th:nth-child(1) {{ width: 5%; }}
-  .pases-table th:nth-child(2) {{ width: 15%; }}
-  .pases-table th:nth-child(3) {{ width: 62%; }}
-  .pases-table th:nth-child(4) {{ width: 18%; }}
   th.right {{ text-align: right; }}
   td {{
-    padding: 3px 10px;
+    padding: 2px 6px;
     border-bottom: 1px solid #e0e0e0;
   }}
   td.dim {{ color: #999; }}
@@ -1524,18 +1630,23 @@ def exportar_resumen_html(datos: dict[int, dict], ruta_pdf: str | Path, ruta_sal
   td.bet {{ color: #2e7d32; font-weight: 600; }}
   td.ok {{ color: #2e7d32; font-weight: 600; }}
   td.warn {{ color: #e65100; font-weight: 600; }}
-  .resumen-line {{
-    font-size: 12px;
-    padding: 2px 14px;
-    color: #c62828;
-    font-weight: 600;
-  }}
   tr:nth-child(even) {{ background: #f1f8e9; }}
   tr:nth-child(odd) {{ background: #fff; }}
+  @page {{
+    size: A4;
+    margin: 6mm;
+  }}
   @media print {{
-    body {{ padding: 10px; }}
-    .container {{ border: 1px solid #c8e6c9; }}
-    .header {{ -webkit-print-color-adjust: exact; print-color-adjust: exact; }}
+    body {{ padding: 0; font-size: 10px; background: #fff; }}
+    .container {{ border: 1px solid #c8e6c9; width: 100%; max-width: 100%; }}
+    .header {{ padding: 6px 10px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }}
+    .header h1 {{ font-size: 12px; }}
+    .section-title {{ padding: 4px 8px; font-size: 10px; }}
+    .bases-table, .validaciones-table, .pases-table, .reglas-table {{ font-size: 9px; }}
+    th, td {{ padding: 2px 5px; }}
+    .resumen-box {{ padding: 4px 10px 6px; font-size: 9px; }}
+    .panel-reglas .reglas-table {{ background: #f1f8e9; -webkit-print-color-adjust: exact; print-color-adjust: exact; }}
+    .bottom-grid {{ page-break-inside: avoid; }}
     th {{ -webkit-print-color-adjust: exact; print-color-adjust: exact; }}
     tr:nth-child(even) {{ -webkit-print-color-adjust: exact; print-color-adjust: exact; }}
   }}
@@ -1544,7 +1655,10 @@ def exportar_resumen_html(datos: dict[int, dict], ruta_pdf: str | Path, ruta_sal
 <body>
 <div class="container">
 <div class="header"><h1>{header}</h1></div>
-<div class="subtitle">BASES POR APUESTA</div>
+<div class="top-row">
+<div class="section-bases">
+<div class="section-title">Bases por apuesta</div>
+<div class="bases-wrap">
 <table class="bases-table">
 <thead>
 <tr><th>Carreras</th><th>Apuesta</th><th class="right">Base</th></tr>
@@ -1556,7 +1670,13 @@ def exportar_resumen_html(datos: dict[int, dict], ruta_pdf: str | Path, ruta_sal
 
     html += """</tbody>
 </table>
+</div>
+</div>
 """
+
+    resultados_val = _validar_carreras_tela(datos)
+    html += _html_panel_validaciones(resultados_val)
+    html += "</div>\n"  # top-row
 
     # --- Resumen de bases únicas ---
     from collections import defaultdict
@@ -1578,32 +1698,13 @@ def exportar_resumen_html(datos: dict[int, dict], ruta_pdf: str | Path, ruta_sal
                 texto = _texto_resumen_base_unica(carreras, cod, val)
                 resumen_lineas.append(f"<span class=\"resumen-base\">{texto}</span>")
 
-    if resumen_lineas:
-        for linea in resumen_lineas:
-            html += f'<div class="resumen-line">{linea}</div>\n'
+    html += '<div class="resumen-box">\n'
+    html += f'<span class="resumen-total">{len(filas)} filas</span>\n'
+    for linea in resumen_lineas:
+        html += f"{linea}\n"
+    html += "</div>\n"
 
-    # --- Validaciones por carrera ---
-    resultados_val = _validar_carreras_tela(datos)
-    html += _html_validaciones_tela(resultados_val)
-
-    # --- Tabla de pases (secuencias) ---
-    secuencias = _agrupar_pases_por_secuencia(datos)
-    if secuencias:
-        html += '<div class="subtitle">CONTROL DE PASES</div>\n'
-        for codigo in sorted(secuencias.keys()):
-            seqs = secuencias[codigo]
-            expected = PASES_POR_APUESTA.get(codigo, [])
-            html += f'<table class="pases-table" style="margin-bottom:8px">\n'
-            html += f'<thead>\n'
-            html += f'<tr><th colspan="4" style="text-align:center">CONTROL DE PASES - {codigo} ({len(expected)}p)</th></tr>\n'
-            html += f'<tr><th>#</th><th>Carreras</th><th>Detalle</th><th class="right">Estado</th></tr>\n'
-            html += f'</thead>\n<tbody>\n'
-            for i, (sc, fin, detalle, estado) in enumerate(seqs, 1):
-                is_ok = "COMPLETA" in estado
-                estado_class = "ok" if is_ok else "warn"
-                estado_clean = "COMPLETA" if is_ok else "INCOMPLETA"
-                html += f'<tr><td>{i}</td><td>C{sc}→C{fin}</td><td>{detalle}</td><td class="right {estado_class}">{estado_clean}</td></tr>\n'
-            html += '</tbody>\n</table>\n'
+    html += _html_bottom_grid(datos)
 
     html += """</div>
 </body>

@@ -3,7 +3,8 @@
 from controlcomparador.ui.tables import (
     MSG_EXA_IMP_JUNTOS,
     MSG_TRI_CUA_JUNTOS,
-    _html_validaciones_tela,
+    _html_panel_reglas,
+    _html_panel_validaciones,
     _REGLAS_PARES_VALIDACION_TELA,
     _REGLAS_VALIDACION_TELA,
     _validar_carreras_tela,
@@ -64,14 +65,15 @@ class TestValidarCarrerasTela:
             (1, 10, [("EXA", 2000)]),
             (4, 14, [("TRI", 2000), ("CUA", 1000)]),
         )
-        html = _html_validaciones_tela(_validar_carreras_tela(datos))
-        assert "validaciones-row" in html
-        assert "validaciones-reglas-panel" in html
-        assert "validaciones-pares-table" in html
-        assert f"<td>{_REGLAS_PARES_VALIDACION_TELA[0]}</td>" in html
-        assert f"<td>{_REGLAS_PARES_VALIDACION_TELA[1]}</td>" in html
+        html = _html_panel_reglas()
+        assert "panel-reglas" in html
+        assert "reglas-table" in html
+        assert f"<td class=\"reglas-par\">{_REGLAS_PARES_VALIDACION_TELA[0]}</td>" in html
+        assert f"<td class=\"reglas-par\">{_REGLAS_PARES_VALIDACION_TELA[1]}</td>" in html
         assert "son excluyentes" not in html
-        assert html.count(f"<td>{MSG_EXA_IMP_JUNTOS}</td>") == 1
-        assert html.count(f"<td>{MSG_TRI_CUA_JUNTOS}</td>") == 1
-        assert MSG_TRI_CUA_JUNTOS in html
+        html_val = _html_panel_validaciones(_validar_carreras_tela(datos))
+        assert MSG_TRI_CUA_JUNTOS in html_val
+        assert 'class="warn"' in html_val
         assert len(_REGLAS_VALIDACION_TELA) == 7
+        # Una fila por regla de caballos/pick + 2 de pares
+        assert html.count("<tr><td") == len(_REGLAS_VALIDACION_TELA) + 2
