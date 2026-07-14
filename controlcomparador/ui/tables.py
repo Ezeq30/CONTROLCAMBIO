@@ -1070,6 +1070,8 @@ def _validar_carreras_tela(datos: dict[int, dict]) -> dict[int, tuple[int, list[
 
         if cab < 8 and "TER" in apuestas:
             violaciones.append(("TER no debería estar", "< 8 caballos → sin TER"))
+        if cab >= 8 and "TER" not in apuestas:
+            violaciones.append(("TER debería estar", "≥ 8 caballos → TER obligatorio"))
 
         if cab >= 12:
             if "IMP" not in apuestas:
@@ -1114,6 +1116,7 @@ MSG_TRI_CUA_JUNTOS = "TRI y CUA no pueden estar juntas"
 
 _REGLAS_CABALLOS_VALIDACION_TELA: tuple[str, ...] = (
     "< 8 caballos → sin TER",
+    "≥ 8 caballos → TER obligatorio",
     "≤ 11 caballos → EXA obligatorio",
     "≤ 11 caballos → sin IMP",
     "≥ 12 caballos → IMP obligatorio",
@@ -1539,10 +1542,14 @@ def exportar_resumen_html(datos: dict[int, dict], ruta_pdf: str | Path, ruta_sal
   .bases-table {{
     width: 100%;
     table-layout: fixed;
+    font-size: 13px;
   }}
   .bases-table th,
   .bases-table td {{
     padding: 4px 10px;
+  }}
+  .bases-table th {{
+    font-size: 12px;
   }}
   .bases-table th:nth-child(1),
   .bases-table td:nth-child(1) {{
@@ -1642,7 +1649,9 @@ def exportar_resumen_html(datos: dict[int, dict], ruta_pdf: str | Path, ruta_sal
     .header {{ padding: 6px 10px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }}
     .header h1 {{ font-size: 12px; }}
     .section-title {{ padding: 4px 8px; font-size: 10px; }}
-    .bases-table, .validaciones-table, .pases-table, .reglas-table {{ font-size: 9px; }}
+    .bases-table {{ font-size: 11px; }}
+    .bases-table th {{ font-size: 10px; }}
+    .validaciones-table, .pases-table, .reglas-table {{ font-size: 9px; }}
     th, td {{ padding: 2px 5px; }}
     .resumen-box {{ padding: 4px 10px 6px; font-size: 9px; }}
     .panel-reglas .reglas-table {{ background: #f1f8e9; -webkit-print-color-adjust: exact; print-color-adjust: exact; }}
