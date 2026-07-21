@@ -273,13 +273,18 @@ def _numero_carrera_tela(
     start_li: int,
     race_lines: list[str],
 ) -> int | None:
+    """En tela el nro de carrera suele ir DESPUÉS de APUESTAS/Bolsa (no antes).
+
+    Si se busca hacia atrás primero, en páginas con 2 carreras se toma el nro
+    de la carrera anterior (mezcla caballos/apuestas/pases).
+    """
+    for l in race_lines:
+        s = l.strip()
+        if s.isdigit() and 1 <= int(s) <= 30:
+            return int(s)
     lineas_pag = paginas[start_pi]
     for back in range(start_li - 1, max(start_li - 15, -1), -1):
         s = lineas_pag[back].strip()
-        if s.isdigit() and 1 <= int(s) <= 30:
-            return int(s)
-    for l in race_lines:
-        s = l.strip()
         if s.isdigit() and 1 <= int(s) <= 30:
             return int(s)
     return None
@@ -408,16 +413,17 @@ def extraer_pases_tela_oficial(ruta_pdf: str | Path) -> dict[int, dict[str, set[
             end_idx = apuestas_indices[idx + 1] if idx + 1 < len(apuestas_indices) else len(lineas)
             race_lines = lineas[start_idx:end_idx]
 
-            # Extraer nro de carrera (buscar ANTES del marcador APUESTAS:)
+            # Nro de carrera: preferir dígito DENTRO del bloque (tras Bolsa/extras).
+            # Buscar atrás primero mezcla con la carrera previa de la misma página.
             num_carrera = None
-            for back in range(start_idx - 1, max(start_idx - 15, -1), -1):
-                s = lineas[back].strip()
+            for l in race_lines:
+                s = l.strip()
                 if s.isdigit() and 1 <= int(s) <= 30:
                     num_carrera = int(s)
                     break
             if num_carrera is None:
-                for l in race_lines:
-                    s = l.strip()
+                for back in range(start_idx - 1, max(start_idx - 15, -1), -1):
+                    s = lineas[back].strip()
                     if s.isdigit() and 1 <= int(s) <= 30:
                         num_carrera = int(s)
                         break
@@ -441,7 +447,9 @@ def extraer_pases_tela_oficial(ruta_pdf: str | Path) -> dict[int, dict[str, set[
                         pases_carrera.setdefault(codigo, set()).add(pase_norm)
 
             if pases_carrera:
-                resultado[num_carrera] = pases_carrera
+                dest = resultado.setdefault(num_carrera, {})
+                for codigo, pases_set in pases_carrera.items():
+                    dest.setdefault(codigo, set()).update(pases_set)
 
     return resultado
 

@@ -35,6 +35,7 @@ class TestEsApuestaExcluida:
           ("Triplo 1er.Pase $2000", False),
           ("Quintuplo 1er.Pase $1000", False),
           ("Triplo Selectivo 1er.Pase $5000", False),
+          ("Cuaterna Selectiva 1er.Pase $2000", False),
           ("Doble $2000", False),
           ("Exacta $ 2000", False),
       ],
