@@ -5,22 +5,22 @@ from controlcomparador.comparators.laplata import comparar_planilla_con_reporte
 
 def _mock_planilla_con_datos():
     return {
-        1: {"caballos": 9, "apuestas": {"EXA": 500.0, "TRI": 1200.0, "CUA": 5000.0}},
-        2: {"caballos": 7, "apuestas": {"EXA": 550.0, "TRI": 1300.0, "CUA": 5500.0}},
+        1: {"caballos": 9, "apuestas": {"EXA": 500.0, "TRI": 1200.0, "DOB": 5000.0}},
+        2: {"caballos": 7, "apuestas": {"EXA": 550.0, "TRI": 1300.0, "DOB": 5500.0}},
     }
 
 
 def _mock_reporte_con_datos():
     return ({
-        1: {"caballos": 9, "apuestas": {"GAN": None, "SEG": None, "TER": None, "QTN": None, "EXA": 500.0, "TRI": 1200.0, "CUA": 5000.0}},
-        2: {"caballos": 7, "apuestas": {"GAN": None, "SEG": None, "TER": None, "QTN": None, "EXA": 550.0, "TRI": 1300.0, "CUA": 5500.0}},
+        1: {"caballos": 9, "apuestas": {"GAN": None, "SEG": None, "TER": None, "QTN": None, "EXA": 500.0, "TRI": 1200.0, "DOB": 5000.0}},
+        2: {"caballos": 7, "apuestas": {"GAN": None, "SEG": None, "TER": None, "QTN": None, "EXA": 550.0, "TRI": 1300.0, "DOB": 5500.0}},
     }, set())
 
 
 def _mock_reporte_sin_ignorados():
     return ({
-        1: {"caballos": 9, "apuestas": {"EXA": 500.0, "TRI": 1200.0, "CUA": 5000.0}},
-        2: {"caballos": 7, "apuestas": {"EXA": 550.0, "TRI": 1300.0, "CUA": 5500.0}},
+        1: {"caballos": 9, "apuestas": {"EXA": 500.0, "TRI": 1200.0, "DOB": 5000.0}},
+        2: {"caballos": 7, "apuestas": {"EXA": 550.0, "TRI": 1300.0, "DOB": 5500.0}},
     }, set())
 
 

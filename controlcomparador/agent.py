@@ -25,6 +25,49 @@ from controlcomparador.parsers.posting import merge_posting_prices
 from controlcomparador.parsers.planilla import normalizar_planilla_laplata
 
 
+def _normalizar_fecha_slash(fecha: str) -> str | None:
+    """Normaliza ``d/m/yyyy`` o ``dd/mm/yyyy`` a ``dd/mm/yyyy``."""
+    partes = fecha.strip().split("/")
+    if len(partes) != 3:
+        return None
+    try:
+        return f"{int(partes[0]):02d}/{int(partes[1]):02d}/{partes[2]}"
+    except ValueError:
+        return None
+
+
+def _resolver_fecha_palermo(
+    fechas: list[str],
+    ruta_reporte: str | Path,
+    fecha_objetivo: Optional[str] = None,
+) -> tuple[Optional[str], Optional[str]]:
+    """Elige una sola fecha del PDF de bases.
+
+    Retorna ``(fecha_usada, aviso)``. Nunca deja ``None`` si hay fechas en el PDF
+    (evita fusionar varias reuniones).
+    """
+    if fecha_objetivo is not None:
+        return fecha_objetivo, None
+    if not fechas:
+        return None, None
+    if len(fechas) == 1:
+        return fechas[0], None
+
+    fecha_reporte = extraer_fecha_reporte(ruta_reporte)
+    if fecha_reporte:
+        ref_norm = _normalizar_fecha_slash(fecha_reporte)
+        if ref_norm:
+            for f in fechas:
+                if _normalizar_fecha_slash(f) == ref_norm:
+                    return f, None
+
+    aviso = (
+        f"No se pudo matchear la fecha del reporte con las del PDF "
+        f"({', '.join(fechas)}); usando {fechas[0]}"
+    )
+    return fechas[0], aviso
+
+
 class AgenteComparacion:
     def comparar_san_isidro(self, ruta_pdf: str | Path, ruta_reporte: str | Path) -> dict:
         apuestas = obtener_apuestas_por_carrera(ruta_pdf)
@@ -49,22 +92,14 @@ class AgenteComparacion:
     ) -> dict:
         datos_pdf = leer_palermo_desde_pdf(ruta_pdf_palermo)
         fechas = datos_pdf.get("fechas", [])
-        fecha_usada = fecha_objetivo
-        if fecha_usada is None and len(fechas) == 1:
-            fecha_usada = fechas[0]
-        if fecha_usada is None and len(fechas) > 1:
-            fecha_reporte = extraer_fecha_reporte(ruta_reporte)
-            if fecha_reporte:
-                ref_norm = f"{int(fecha_reporte.split('/')[0]):02d}/{int(fecha_reporte.split('/')[1]):02d}/{fecha_reporte.split('/')[2]}"
-                for f in fechas:
-                    f_norm = f"{int(f.split('/')[0]):02d}/{int(f.split('/')[1]):02d}/{f.split('/')[2]}"
-                    if f_norm == ref_norm:
-                        fecha_usada = f
-                        break
+        fecha_usada, aviso_fecha = _resolver_fecha_palermo(fechas, ruta_reporte, fecha_objetivo)
         coincide, diferencias, fechas_detectadas, apuestas_pdf_tabla, datos_reporte_tabla = comparar_palermo(
             ruta_pdf_palermo, ruta_reporte,
             fecha_objetivo=fecha_usada, datos_pdf=datos_pdf,
         )
+        if aviso_fecha:
+            diferencias = [aviso_fecha, *diferencias]
+            coincide = False
         return {
             "coincide": coincide,
             "diferencias": diferencias,
@@ -83,22 +118,14 @@ class AgenteComparacion:
     ) -> dict:
         datos_pdf = leer_palermo_desde_pdf(ruta_pdf_palermo)
         fechas = datos_pdf.get("fechas", [])
-        fecha_usada = fecha_objetivo
-        if fecha_usada is None and len(fechas) == 1:
-            fecha_usada = fechas[0]
-        if fecha_usada is None and len(fechas) > 1:
-            fecha_reporte = extraer_fecha_reporte(ruta_reporte)
-            if fecha_reporte:
-                ref_norm = f"{int(fecha_reporte.split('/')[0]):02d}/{int(fecha_reporte.split('/')[1]):02d}/{fecha_reporte.split('/')[2]}"
-                for f in fechas:
-                    f_norm = f"{int(f.split('/')[0]):02d}/{int(f.split('/')[1]):02d}/{f.split('/')[2]}"
-                    if f_norm == ref_norm:
-                        fecha_usada = f
-                        break
+        fecha_usada, aviso_fecha = _resolver_fecha_palermo(fechas, ruta_reporte, fecha_objetivo)
         coincide_pal, diferencias_pal, _, apuestas_pdf_tabla, datos_reporte_tabla = comparar_palermo(
             ruta_pdf_palermo, ruta_reporte,
             fecha_objetivo=fecha_usada, datos_pdf=datos_pdf,
         )
+        if aviso_fecha:
+            diferencias_pal = [aviso_fecha, *diferencias_pal]
+            coincide_pal = False
         apuestas_oficial = extraer_apuestas_desde_oficial_palermo(ruta_pdf_oficial)
         apuestas_pdf_ref = datos_pdf.get("apuestas_por_fecha", {}).get(fecha_usada, {}) if fecha_usada else {}
         coincide_oficial, diferencias_oficial = comparar_oficial_palermo_con_reporte(

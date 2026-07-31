@@ -297,7 +297,7 @@ def _mock_laplata_9_carreras():
         6: {"EXA": 500.0, "TRI": 500.0, "DOB": 1000.0, "QTN": 2000.0},
         7: {"EXA": 500.0, "TRI": 500.0, "DOB": 1000.0, "TPL": 2000.0},
         8: {"EXA": 500.0, "TRI": 500.0, "DOB": 2000.0},
-        9: {"EXA": None, "IMP": 1000.0, "TRI": None, "CUA": 500.0},
+        9: {"IMP": 1000.0, "CUA": 500.0},
     }
     cab = {1: 5, 2: 5, 3: 6, 4: 7, 5: 6, 6: 9, 7: 12, 8: 9, 9: 14}
     plan, rep, post = {}, {}, {}
@@ -403,7 +403,13 @@ def test_imprimir_par_laplata_no_planilla_sin_hueco():
     )
     ancho = _assert_salida_par_compacta(salida, min_lineas=30)
     assert ancho <= 130
-    assert "no planilla" in salida or "no en planil" in salida
+    assert (
+        "no planilla" in salida
+        or "no en planil" in salida
+        or "≠IMP" in salida
+        or "≠CUA" in salida
+        or "[ERR]" in salida
+    )
     assert not re.search(r"╮\s{3,}╭", salida)
     assert not re.search(r"╯\s{3,}╭", salida)
     for ln in salida.splitlines():

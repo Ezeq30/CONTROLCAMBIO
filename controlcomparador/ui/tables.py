@@ -34,8 +34,10 @@ from controlcomparador.config import (
     ORDEN_APUESTAS, SYM_OK, SYM_FAIL, APUESTAS_PICK,
     PASES_POR_APUESTA, PASE_ORDER, APUESTAS_SIN_COMPARAR_VALOR,
     APUESTAS_CARRERAS_ALL,
+    MSG_EXA_IMP_JUNTOS, MSG_TRI_CUA_JUNTOS,
 )
 from controlcomparador.parsers.pdf import extraer_info_reunion_tela
+from controlcomparador.parsers.report import pares_conflictivos
 from controlcomparador.ui.console import console, ampliar_consola_windows, escribir_salida_fija, tema
 
 SeccionComparacionHtml = dict[str, Any]
@@ -660,6 +662,17 @@ def _estado_apuesta(v1: Optional[float], v2: Optional[float], etiq1: str, etiq2:
     return f"[red]{SYM_FAIL}[/red]"
 
 
+def _estado_par_excluyente(pareja: str) -> str:
+    """Estado corto para vista par (≤13 cols): [ERR]≠IMP."""
+    return f"[red]{SYM_FAIL}≠{pareja}[/red]"
+
+
+def _aplicar_par_excluyente(estado: str, cod: str, conflictos: dict[str, str]) -> str:
+    if cod in conflictos:
+        return _estado_par_excluyente(conflictos[cod])
+    return estado
+
+
 def _estado_tres_fuentes(
     v_pdf: Optional[float],
     v_rep: Optional[float],
@@ -739,6 +752,9 @@ def imprimir_tabla_san_isidro(
         cab_str = f"{c_pdf}/{c_rep}"
 
         todos_codigos = _ordenar_codigos(set(pdf_ap.keys()) | set(rep_ap.keys()))
+        conflictos = pares_conflictivos(
+            set(pdf_ap.keys()) | set(rep_ap.keys()) | set(pos_ap.keys())
+        )
         for idx, cod in enumerate(todos_codigos):
             v_pdf = pdf_ap.get(cod)
             v_rep = rep_ap.get(cod)
@@ -747,6 +763,7 @@ def imprimir_tabla_san_isidro(
                 estado = _estado_tres_fuentes(v_pdf, v_rep, v_pos, label_pdf)
             else:
                 estado = _estado_apuesta(v_pdf, v_rep, label_pdf, "reporte")
+            estado = _aplicar_par_excluyente(estado, cod, conflictos)
             num_errores, num_avisos = _contar_fila_estado(estado, num_errores, num_avisos)
 
             if idx == 0 and num_carrera != todas[0]:
@@ -972,6 +989,7 @@ def imprimir_tabla_posting_vs_reporte(
     imprimir: bool = True,
     compacto: bool = False,
     par: bool = False,
+    validar_pares: bool = False,
 ) -> BloqueComparacion:
     valores_posting, _ = datos_posting
     valores_reporte, _ = datos_reporte
@@ -1010,6 +1028,11 @@ def imprimir_tabla_posting_vs_reporte(
             codigos = _codigos_carrera_par_laplata(src_ap, rep_ap, pos_ap)
         else:
             codigos = _ordenar_codigos(set(pos_ap.keys()) | set(rep_ap.keys()) | set(src_ap.keys()))
+        conflictos = (
+            pares_conflictivos(set(pos_ap.keys()) | set(rep_ap.keys()) | set(src_ap.keys()))
+            if validar_pares
+            else {}
+        )
         for idx, cod in enumerate(codigos):
             v_pos = pos_ap.get(cod)
             v_rep = rep_ap.get(cod)
@@ -1018,6 +1041,8 @@ def imprimir_tabla_posting_vs_reporte(
                 estado = _estado_posting_triple(v_pos, v_src, v_rep, lbl)
             else:
                 estado = _estado_apuesta(v_pos, v_rep, "posting", "reporte")
+            if validar_pares:
+                estado = _aplicar_par_excluyente(estado, cod, conflictos)
             num_errores, num_avisos = _contar_fila_estado(estado, num_errores, num_avisos)
 
             if idx == 0 and num_carrera != todas[0]:
@@ -1110,9 +1135,6 @@ def _validar_carreras_tela(datos: dict[int, dict]) -> dict[int, tuple[int, list[
 
     return resultados
 
-
-MSG_EXA_IMP_JUNTOS = "EXA e IMP no pueden estar juntas"
-MSG_TRI_CUA_JUNTOS = "TRI y CUA no pueden estar juntas"
 
 _REGLAS_CABALLOS_VALIDACION_TELA: tuple[str, ...] = (
     "< 8 caballos → sin TER",

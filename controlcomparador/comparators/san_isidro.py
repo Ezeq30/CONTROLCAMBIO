@@ -5,9 +5,18 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Optional
 
-from controlcomparador.config import APUESTAS_SIN_COMPARAR_VALOR
+from controlcomparador.config import (
+    APUESTAS_SIN_COMPARAR_VALOR,
+    MSG_EXA_IMP_JUNTOS,
+    MSG_TRI_CUA_JUNTOS,
+)
 from controlcomparador.parsers.pdf import normalizar_pdf
-from controlcomparador.parsers.report import normalizar_reporte, validar_pick_conflict
+from controlcomparador.parsers.report import (
+    normalizar_reporte,
+    pares_conflictivos,
+    validar_pares_excluyentes,
+    validar_pick_conflict,
+)
 
 
 def comparar_pdf_y_reporte(
@@ -19,6 +28,7 @@ def comparar_pdf_y_reporte(
     datos_reporte, codigos_con_all = normalizar_reporte(ruta_reporte)
     diferencias: list[str] = []
     diferencias.extend(validar_pick_conflict(datos_reporte))
+    diferencias.extend(validar_pares_excluyentes(datos_reporte))
     todas_las_carreras = set(datos_pdf.keys()) | set(datos_reporte.keys())
 
     for num_carrera in sorted(todas_las_carreras):
@@ -41,6 +51,16 @@ def comparar_pdf_y_reporte(
 
         apuestas_pdf = set(datos_pdf[num_carrera]["apuestas"].keys())
         apuestas_reporte = set(datos_reporte[num_carrera]["apuestas"].keys())
+        # Par excluyente cruzado (ej. IMP en tela + EXA solo en reporte)
+        for cod, pareja in pares_conflictivos(apuestas_pdf | apuestas_reporte).items():
+            if cod < pareja:
+                msg = (
+                    f"Carrera {num_carrera}: {MSG_EXA_IMP_JUNTOS}"
+                    if {cod, pareja} == {"EXA", "IMP"}
+                    else f"Carrera {num_carrera}: {MSG_TRI_CUA_JUNTOS}"
+                )
+                if msg not in diferencias:
+                    diferencias.append(msg)
         solo_en_pdf = apuestas_pdf - apuestas_reporte
         solo_en_reporte = (apuestas_reporte - apuestas_pdf) - codigos_con_all
 

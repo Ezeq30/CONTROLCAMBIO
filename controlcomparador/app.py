@@ -89,6 +89,7 @@ def _imprimir_comparacion_con_posting(
     datos_fuente: Optional[dict] = None,
     datos_reporte_meta: Optional[dict] = None,
     label_fuente: Optional[str] = None,
+    validar_pares: bool = False,
 ) -> str:
     """Vista par: tabla principal (izq) + posting triple (der) vía ``imprimir_par_comparacion``."""
     datos_reporte = normalizar_reporte_palermo(ruta_reporte)
@@ -102,6 +103,7 @@ def _imprimir_comparacion_con_posting(
         imprimir=False,
         compacto=True,
         par=True,
+        validar_pares=validar_pares,
     )
     imprimir_par_comparacion(bloque_izq, bloque_der)
     return bloque_der.titulo
@@ -216,6 +218,7 @@ def san_isidro(
             datos_fuente=resultado["datos_pdf"],
             datos_reporte_meta=resultado["datos_reporte"],
             label_fuente=resultado.get("tipo_pdf", "OFICIAL"),
+            validar_pares=True,
         )
         _mostrar_resumenes_posting(
             resultado.get("tipo_pdf", "OFICIAL"), resultado, resultado_posting, diffs,
@@ -449,6 +452,7 @@ def ejecutar_auto_comparacion(seleccion: str, deteccion: dict) -> None:
                 datos_fuente=resultado["datos_pdf"],
                 datos_reporte_meta=resultado["datos_reporte"],
                 label_fuente=resultado.get("tipo_pdf", "OFICIAL"),
+                validar_pares=True,
             )
             _mostrar_resumenes_posting(
                 resultado.get("tipo_pdf", "OFICIAL"), resultado, resultado_posting, diffs,
@@ -753,6 +757,7 @@ def _menu_san_isidro_interactivo():
                     datos_fuente=resultado["datos_pdf"],
                     datos_reporte_meta=resultado["datos_reporte"],
                     label_fuente=resultado.get("tipo_pdf", "OFICIAL"),
+                    validar_pares=True,
                 )
                 _mostrar_resumenes_posting(
                     resultado.get("tipo_pdf", "OFICIAL"), resultado, res_p, diffs,

@@ -15,8 +15,55 @@ from controlcomparador.config import (
     PATRON_CABALLO,
     MAPEO_RSM,
     APUESTAS_PICK,
+    PARES_EXCLUYENTES,
+    MSG_EXA_IMP_JUNTOS,
+    MSG_TRI_CUA_JUNTOS,
 )
 from controlcomparador.utils.money import parsear_monto_str
+
+
+def _codigos_carrera(datos_carrera: dict) -> set[str]:
+    """Acepta formato SI/LP ``{apuestas: {...}}`` o Palermo plano ``{EXA: ...}``."""
+    apuestas = datos_carrera.get("apuestas")
+    if isinstance(apuestas, dict):
+        return set(apuestas.keys())
+    return {k for k in datos_carrera.keys() if k != "caballos"}
+
+
+def pares_conflictivos(codigos: set[str]) -> dict[str, str]:
+    """Si hay un par excluyente, retorna ``{codigo: pareja}`` (ambos sentidos)."""
+    resultado: dict[str, str] = {}
+    for a, b in PARES_EXCLUYENTES:
+        if a in codigos and b in codigos:
+            resultado[a] = b
+            resultado[b] = a
+    return resultado
+
+
+def _mensaje_par_excluyente(a: str, b: str) -> str:
+    par = tuple(sorted((a, b)))
+    if par == ("EXA", "IMP"):
+        return MSG_EXA_IMP_JUNTOS
+    if par == ("CUA", "TRI"):
+        return MSG_TRI_CUA_JUNTOS
+    return f"{a} y {b} no pueden estar juntas"
+
+
+def validar_pares_excluyentes(datos: dict[int, dict]) -> list[str]:
+    """EXA↔IMP y TRI↔CUA son mutuamente excluyentes (EXA+TRI / IMP+CUA sí pueden)."""
+    errores: list[str] = []
+    for num_carrera in sorted(datos.keys()):
+        conflictos = pares_conflictivos(_codigos_carrera(datos[num_carrera]))
+        vistos: set[tuple[str, str]] = set()
+        for cod, pareja in conflictos.items():
+            clave = tuple(sorted((cod, pareja)))
+            if clave in vistos:
+                continue
+            vistos.add(clave)
+            errores.append(
+                f"Carrera {num_carrera}: {_mensaje_par_excluyente(cod, pareja)}"
+            )
+    return errores
 
 
 def validar_pick_conflict(datos_reporte: dict[int, dict]) -> list[str]:
@@ -24,7 +71,7 @@ def validar_pick_conflict(datos_reporte: dict[int, dict]) -> list[str]:
     Estas apuestas son mutuamente excluyentes: solo una por carrera."""
     errores: list[str] = []
     for num_carrera in sorted(datos_reporte.keys()):
-        apuestas = datos_reporte[num_carrera].get("apuestas", {})
+        apuestas = _codigos_carrera(datos_reporte[num_carrera])
         picks = [cod for cod in apuestas if cod in APUESTAS_PICK]
         if len(picks) > 1:
             errores.append(
@@ -253,8 +300,11 @@ def normalizar_reporte_palermo(ruta_reporte: str | Path) -> tuple[dict[int, dict
 PATRON_FECHA_REPORTE = re.compile(r"PROGRAM DATE:\s*(\d{1,2})-(\w{3})-(\d{2,4})")
 
 _MESES = {
-    "JAN": "01", "FEB": "02", "MAR": "03", "ABR": "04", "MAY": "05", "JUN": "06",
-    "JUL": "07", "AGO": "08", "SEP": "09", "SET": "09", "OCT": "10", "NOV": "11", "DIC": "12",
+    # Inglés (RSM TABLE: PROGRAM DATE: 01-AUG-2026)
+    "JAN": "01", "FEB": "02", "MAR": "03", "APR": "04", "MAY": "05", "JUN": "06",
+    "JUL": "07", "AUG": "08", "SEP": "09", "OCT": "10", "NOV": "11", "DEC": "12",
+    # Español
+    "ABR": "04", "AGO": "08", "SET": "09", "DIC": "12",
 }
 
 

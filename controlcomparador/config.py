@@ -105,6 +105,14 @@ APUESTAS_SIN_COMPARAR_VALOR: set[str] = {"GAN", "SEG", "TER"}
 # Apuestas "pick" mutuamente excluyentes por carrera
 APUESTAS_PICK: set[str] = {"TPL", "QTN", "QTP", "CAD"}
 
+# Pares excluyentes por carrera (EXA+TRI e IMP+CUA SÍ pueden coexistir)
+PARES_EXCLUYENTES: tuple[tuple[str, str], ...] = (
+    ("EXA", "IMP"),
+    ("TRI", "CUA"),
+)
+MSG_EXA_IMP_JUNTOS = "EXA e IMP no pueden estar juntas"
+MSG_TRI_CUA_JUNTOS = "TRI y CUA no pueden estar juntas"
+
 # Apuestas a ignorar en reporte para La Plata
 APUESTAS_IGNORAR_LAPLATA: set[str] = {"GAN", "SEG", "TER", "QTN"}
 

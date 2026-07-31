@@ -22,6 +22,13 @@ def comparar_palermo(
     resumen_por_fecha = datos_pdf.get("resumen_por_fecha", {})
 
     if fecha_objetivo is None:
+        # Defensa: no fusionar varias reuniones. Preferir la primera fecha del PDF.
+        if len(fechas) == 1:
+            fecha_objetivo = fechas[0]
+        elif len(fechas) > 1:
+            fecha_objetivo = fechas[0]
+
+    if fecha_objetivo is None:
         apuestas_pdf: dict[int, dict[str, Optional[float]]] = {}
         for _, apuestas_carreras in apuestas_por_fecha.items():
             for carrera, apuestas in apuestas_carreras.items():
