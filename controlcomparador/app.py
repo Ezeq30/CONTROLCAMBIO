@@ -218,7 +218,6 @@ def san_isidro(
             datos_fuente=resultado["datos_pdf"],
             datos_reporte_meta=resultado["datos_reporte"],
             label_fuente=resultado.get("tipo_pdf", "OFICIAL"),
-            validar_pares=True,
         )
         _mostrar_resumenes_posting(
             resultado.get("tipo_pdf", "OFICIAL"), resultado, resultado_posting, diffs,
@@ -452,7 +451,6 @@ def ejecutar_auto_comparacion(seleccion: str, deteccion: dict) -> None:
                 datos_fuente=resultado["datos_pdf"],
                 datos_reporte_meta=resultado["datos_reporte"],
                 label_fuente=resultado.get("tipo_pdf", "OFICIAL"),
-                validar_pares=True,
             )
             _mostrar_resumenes_posting(
                 resultado.get("tipo_pdf", "OFICIAL"), resultado, resultado_posting, diffs,
@@ -757,7 +755,6 @@ def _menu_san_isidro_interactivo():
                     datos_fuente=resultado["datos_pdf"],
                     datos_reporte_meta=resultado["datos_reporte"],
                     label_fuente=resultado.get("tipo_pdf", "OFICIAL"),
-                    validar_pares=True,
                 )
                 _mostrar_resumenes_posting(
                     resultado.get("tipo_pdf", "OFICIAL"), resultado, res_p, diffs,

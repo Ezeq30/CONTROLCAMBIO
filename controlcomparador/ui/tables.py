@@ -752,9 +752,6 @@ def imprimir_tabla_san_isidro(
         cab_str = f"{c_pdf}/{c_rep}"
 
         todos_codigos = _ordenar_codigos(set(pdf_ap.keys()) | set(rep_ap.keys()))
-        conflictos = pares_conflictivos(
-            set(pdf_ap.keys()) | set(rep_ap.keys()) | set(pos_ap.keys())
-        )
         for idx, cod in enumerate(todos_codigos):
             v_pdf = pdf_ap.get(cod)
             v_rep = rep_ap.get(cod)
@@ -763,7 +760,6 @@ def imprimir_tabla_san_isidro(
                 estado = _estado_tres_fuentes(v_pdf, v_rep, v_pos, label_pdf)
             else:
                 estado = _estado_apuesta(v_pdf, v_rep, label_pdf, "reporte")
-            estado = _aplicar_par_excluyente(estado, cod, conflictos)
             num_errores, num_avisos = _contar_fila_estado(estado, num_errores, num_avisos)
 
             if idx == 0 and num_carrera != todas[0]:
