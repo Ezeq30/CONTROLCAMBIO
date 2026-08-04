@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Tests: columna Carreras en resumen tela oficial — ALL solo EXA/TRI/IMP."""
+"""Tests: columna Carreras en resumen tela oficial — rangos, sin ALL."""
 
 import re
 from pathlib import Path
@@ -28,17 +28,17 @@ def _datos_reunion_11_carreras():
 
 
 class TestFormatCarrerasList:
-    def test_exa_todas_carreras_usa_all(self):
+    def test_exa_todas_carreras_usa_rango(self):
         carreras = list(range(1, 12))
-        assert tables._format_carreras_list(carreras, 11, "EXA") == "ALL"
+        assert tables._format_carreras_list(carreras, 11, "EXA") == "1-11"
 
-    def test_tri_todas_carreras_usa_all(self):
+    def test_tri_todas_carreras_usa_rango(self):
         carreras = list(range(1, 12))
-        assert tables._format_carreras_list(carreras, 11, "TRI") == "ALL"
+        assert tables._format_carreras_list(carreras, 11, "TRI") == "1-11"
 
-    def test_imp_todas_carreras_usa_all(self):
+    def test_imp_todas_carreras_usa_rango(self):
         carreras = list(range(1, 12))
-        assert tables._format_carreras_list(carreras, 11, "IMP") == "ALL"
+        assert tables._format_carreras_list(carreras, 11, "IMP") == "1-11"
 
     def test_cad_todas_carreras_lista_rango(self):
         carreras = list(range(1, 12))
@@ -53,7 +53,7 @@ class TestFormatCarrerasList:
 
 
 class TestExportarResumenHtmlCarreras:
-    def test_html_all_solo_exa_tri_imp(self, tmp_path: Path):
+    def test_html_sin_all_muestra_rangos(self, tmp_path: Path):
         datos = _datos_reunion_11_carreras()
         pdf = tmp_path / "tela.pdf"
         pdf.write_bytes(b"%PDF-1.4")
@@ -72,18 +72,17 @@ class TestExportarResumenHtmlCarreras:
             html,
         )
 
-        assert ("ALL", "EXA") in filas_bases
-        assert ("ALL", "TRI") in filas_bases
+        assert ("1-11", "EXA") in filas_bases
+        assert ("1-11", "TRI") in filas_bases
         assert ("1-11", "CAD") in filas_bases
         assert ("1-11", "QTP") in filas_bases
         assert ("1-9", "DOB") in filas_bases
         assert ("10", "DOB") in filas_bases
         for carr, cod in filas_bases:
-            if cod not in ("EXA", "TRI", "IMP"):
-                assert carr != "ALL", f"{cod} no debe usar ALL"
+            assert carr != "ALL", f"{cod} no debe usar ALL"
 
     def test_html_imp_unica_muestra_carrera(self, tmp_path: Path):
-        """Una sola IMP no debe figurar como ALL (bug HTML len(entries)==1)."""
+        """Una sola IMP muestra su carrera, no ALL."""
         datos = _datos_reunion_11_carreras()
         datos[6]["apuestas"]["IMP"] = 5000.0
         pdf = tmp_path / "tela.pdf"
@@ -103,10 +102,10 @@ class TestExportarResumenHtmlCarreras:
             html,
         )
         assert ("6", "IMP") in filas_bases
-        assert ("ALL", "IMP") not in filas_bases
-        assert ("ALL", "EXA") in filas_bases
+        assert ("1-11", "EXA") in filas_bases
         assert "08/08/2026" in html
-
+        for carr, _cod in filas_bases:
+            assert carr != "ALL"
 
 
 def _datos_reunion_13_parcial():

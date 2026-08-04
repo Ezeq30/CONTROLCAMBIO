@@ -33,7 +33,6 @@ from collections import defaultdict
 from controlcomparador.config import (
     ORDEN_APUESTAS, SYM_OK, SYM_FAIL, APUESTAS_PICK,
     PASES_POR_APUESTA, PASE_ORDER, APUESTAS_SIN_COMPARAR_VALOR,
-    APUESTAS_CARRERAS_ALL,
     MSG_EXA_IMP_JUNTOS, MSG_TRI_CUA_JUNTOS,
 )
 from controlcomparador.parsers.pdf import extraer_info_reunion_tela
@@ -1250,9 +1249,10 @@ def _html_validaciones_tela(resultados: dict[int, tuple[int, list[tuple[str, str
     return _html_panel_validaciones(resultados) + _html_panel_reglas()
 
 
-def _format_carreras_list(carreras: list[int], total: int, cod: str | None = None) -> str:
-    if len(carreras) == total and cod in APUESTAS_CARRERAS_ALL:
-        return "ALL"
+def _format_carreras_list(carreras: list[int], total: int = 0, cod: str | None = None) -> str:
+    """Formatea lista de carreras como rangos (1-11, 1-9,10). Sin etiqueta ALL."""
+    if not carreras:
+        return ""
     carreras = sorted(carreras)
     ranges: list[str] = []
     start = carreras[0]

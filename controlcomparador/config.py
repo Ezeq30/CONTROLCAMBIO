@@ -38,8 +38,9 @@ PATRON_PRIMER_PASE = re.compile(r"\b1er\s*\.?\s*p\s*a\s*s\s*e\b|\b1re\s*\.?\s*p\
 
 # Patrón para detectar pases en tela oficial (Cuaterna 1er.Pase, Cuaterna Con Jackpot 1er.Pase, etc.)
 # "Selectiva/Selectivo" y "Con Jackpot" son opcionales entre el nombre y el pase.
+# jack\s*po\s*t: pypdf a veces parte "Jackpot" como "Jackpo t"
 PATRON_PASE_TELA = re.compile(
-    r"(cuaterna|quintuplo|triplo|cadena)\s+(?:con\s+jackpot\s+)?(?:selectiv[oa]\s+)?(?:final\s+)?"
+    r"(cuaterna|quintuplo|triplo|cadena)\s+(?:con\s+jack\s*po\s*t\s+)?(?:selectiv[oa]\s+)?(?:final\s+)?"
     r"(1er\s*\.?\s*p\s*a\s*s\s*e|2do\s*\.?\s*p\s*a\s*s\s*e|3er\s*\.?\s*p\s*a\s*s\s*e"
     r"|4to\s*\.?\s*p\s*a\s*s\s*e|5to\s*\.?\s*p\s*a\s*s\s*e|6to\s*\.?\s*p\s*a\s*s\s*e"
     rf"|{_PASE_ULTIMO_SUFFIX})",
@@ -115,9 +116,6 @@ MSG_TRI_CUA_JUNTOS = "TRI y CUA no pueden estar juntas"
 
 # Apuestas a ignorar en reporte para La Plata
 APUESTAS_IGNORAR_LAPLATA: set[str] = {"GAN", "SEG", "TER", "QTN"}
-
-# Solo EXA/TRI/IMP pueden mostrar "ALL" en columna Carreras (resumen tela oficial)
-APUESTAS_CARRERAS_ALL: frozenset[str] = frozenset({"EXA", "TRI", "IMP"})
 
 # Orden lógico para mostrar apuestas
 ORDEN_APUESTAS: list[str] = [
