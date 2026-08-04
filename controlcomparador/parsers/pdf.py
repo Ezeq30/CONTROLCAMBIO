@@ -362,24 +362,52 @@ def _obtener_apuestas_tela_oficial(ruta_pdf: str | Path) -> list[list]:
     return resultado
 
 
-def extraer_info_reunion_tela(ruta_pdf: str | Path) -> dict[str, str]:
-    import pypdf
-    reader = pypdf.PdfReader(ruta_pdf)
-    texto = (reader.pages[0].extract_text() or "").split("\n")
+_PATRON_TITULO_TELA = re.compile(
+    r"Programa\s+Depurado.*?Reunion\s+(\d+)\s+del\s+(\d{1,2}/\d{1,2}/\d{4})",
+    re.IGNORECASE | re.DOTALL,
+)
+_PATRON_FIN_ENCABEZADO_TELA = re.compile(
+    r"^(Premio\b|APUESTAS?\s*:|Carrera\b)",
+    re.IGNORECASE,
+)
+
+
+def _parsear_info_reunion_tela(texto_pagina: str) -> dict[str, str]:
+    """Extrae reunión/fecha/hipódromo del encabezado de tela (no fechas del cuerpo)."""
     reunion = ""
     fecha = ""
     hipodromo = ""
-    for line in texto:
+
+    m_titulo = _PATRON_TITULO_TELA.search(texto_pagina or "")
+    if m_titulo:
+        reunion = m_titulo.group(1)
+        fecha = m_titulo.group(2)
+
+    for line in (texto_pagina or "").split("\n"):
         s = line.strip()
-        m = re.search(r"Reunion\s+(\d+)", s, re.IGNORECASE)
-        if m:
-            reunion = m.group(1)
-        d = re.search(r"(\d{2}/\d{2}/\d{4})", s)
-        if d:
-            fecha = d.group(1)
+        if not s:
+            continue
+        if _PATRON_FIN_ENCABEZADO_TELA.match(s):
+            break
+        if not reunion:
+            m = re.search(r"Reunion\s+(\d+)", s, re.IGNORECASE)
+            if m:
+                reunion = m.group(1)
+        if not fecha:
+            d = re.search(r"(\d{1,2}/\d{1,2}/\d{4})", s)
+            if d:
+                fecha = d.group(1)
         if "Hipodromo" in s:
             hipodromo = s
+
     return {"reunion": reunion, "fecha": fecha, "hipodromo": hipodromo}
+
+
+def extraer_info_reunion_tela(ruta_pdf: str | Path) -> dict[str, str]:
+    import pypdf
+    reader = pypdf.PdfReader(ruta_pdf)
+    texto = reader.pages[0].extract_text() or ""
+    return _parsear_info_reunion_tela(texto)
 
 
 def obtener_apuestas_por_carrera(ruta_pdf: str | Path) -> list[list]:

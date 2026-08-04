@@ -82,6 +82,32 @@ class TestExportarResumenHtmlCarreras:
             if cod not in ("EXA", "TRI", "IMP"):
                 assert carr != "ALL", f"{cod} no debe usar ALL"
 
+    def test_html_imp_unica_muestra_carrera(self, tmp_path: Path):
+        """Una sola IMP no debe figurar como ALL (bug HTML len(entries)==1)."""
+        datos = _datos_reunion_11_carreras()
+        datos[6]["apuestas"]["IMP"] = 5000.0
+        pdf = tmp_path / "tela.pdf"
+        pdf.write_bytes(b"%PDF-1.4")
+        salida = tmp_path / "resumen.html"
+        info = {"reunion": "71", "fecha": "08/08/2026", "hipodromo": "Hipodromo de San Isidro"}
+
+        with patch(
+            "controlcomparador.ui.tables.extraer_info_reunion_tela",
+            return_value=info,
+        ):
+            tables.exportar_resumen_html(datos, pdf, salida)
+
+        html = salida.read_text(encoding="utf-8")
+        filas_bases = re.findall(
+            r"<tr><td>([^<]*)</td><td class=\"bet\">([^<]*)</td>",
+            html,
+        )
+        assert ("6", "IMP") in filas_bases
+        assert ("ALL", "IMP") not in filas_bases
+        assert ("ALL", "EXA") in filas_bases
+        assert "08/08/2026" in html
+
+
 
 def _datos_reunion_13_parcial():
     """Mock reunión 13: EXA/TRI en todas; CAD solo C2; QTP solo C4,C9."""

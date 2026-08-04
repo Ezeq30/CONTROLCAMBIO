@@ -1481,10 +1481,7 @@ def exportar_resumen_html(datos: dict[int, dict], ruta_pdf: str | Path, ruta_sal
         entries = [(v, carreras) for (c, v), carreras in grupos.items() if c == cod]
         entries.sort(key=lambda x: (0, x[0]) if x[0] is not None else (1, 0))
         for val, carreras in entries:
-            if len(entries) == 1 and cod in APUESTAS_CARRERAS_ALL:
-                carrera_str = "ALL"
-            else:
-                carrera_str = _format_carreras_list(carreras, total, cod)
+            carrera_str = _format_carreras_list(carreras, total, cod)
             filas.append((carrera_str, cod, formato_valor(val)))
 
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
