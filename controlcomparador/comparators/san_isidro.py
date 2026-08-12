@@ -16,7 +16,7 @@ def comparar_pdf_y_reporte(
     apuestas_raw: Optional[list[list]] = None,
 ) -> tuple[bool, list[str]]:
     datos_pdf = normalizar_pdf(ruta_pdf, apuestas_raw=apuestas_raw)
-    datos_reporte, codigos_con_all = normalizar_reporte(ruta_reporte)
+    datos_reporte, _ = normalizar_reporte(ruta_reporte)
     diferencias: list[str] = []
     diferencias.extend(validar_pick_conflict(datos_reporte))
     todas_las_carreras = set(datos_pdf.keys()) | set(datos_reporte.keys())
@@ -42,7 +42,7 @@ def comparar_pdf_y_reporte(
         apuestas_pdf = set(datos_pdf[num_carrera]["apuestas"].keys())
         apuestas_reporte = set(datos_reporte[num_carrera]["apuestas"].keys())
         solo_en_pdf = apuestas_pdf - apuestas_reporte
-        solo_en_reporte = (apuestas_reporte - apuestas_pdf) - codigos_con_all
+        solo_en_reporte = apuestas_reporte - apuestas_pdf
 
         if solo_en_pdf:
             diferencias.append(

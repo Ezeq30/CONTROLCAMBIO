@@ -64,8 +64,9 @@ class TestComparacionSiSinPares:
         coincide, diferencias = comparar_pdf_y_reporte("pdf", "reporte")
         assert not any(MSG_EXA_IMP_JUNTOS in d for d in diferencias)
         assert not any(MSG_TRI_CUA_JUNTOS in d for d in diferencias)
-        # EXA/TRI con ALL no cuentan como solo_en_reporte
-        assert coincide is True
+        assert coincide is False
+        assert any("EXA" in d and "Reporte" in d and "PDF" in d for d in diferencias)
+        assert any("TRI" in d and "Reporte" in d and "PDF" in d for d in diferencias)
 
     @patch("controlcomparador.comparators.san_isidro.normalizar_pdf")
     @patch("controlcomparador.comparators.san_isidro.normalizar_reporte")

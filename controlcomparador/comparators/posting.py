@@ -68,7 +68,7 @@ def comparar_oficial_con_posting(
     datos_pdf: dict,
     datos_posting: tuple[dict[int, dict[str, Optional[float]]], set[str]],
 ) -> tuple[bool, list[str]]:
-    valores_posting, codigos_all_posting = datos_posting
+    valores_posting, _ = datos_posting
 
     diferencias: list[str] = []
     todas_las_carreras = set(datos_pdf.keys()) | set(valores_posting.keys())
@@ -86,7 +86,7 @@ def comparar_oficial_con_posting(
         aps_pdf = set(datos_pdf[num_carrera].get("apuestas", {}).keys()) - APUESTAS_SIN_COMPARAR_VALOR
         aps_posting = set(valores_posting[num_carrera].keys()) - APUESTAS_SIN_COMPARAR_VALOR
         solo_en_pdf = aps_pdf - aps_posting
-        solo_en_posting = (aps_posting - aps_pdf) - codigos_all_posting
+        solo_en_posting = aps_posting - aps_pdf
 
         if solo_en_pdf:
             diferencias.append(

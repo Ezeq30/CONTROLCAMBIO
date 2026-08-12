@@ -750,7 +750,8 @@ def imprimir_tabla_san_isidro(
         c_rep = rep.get("caballos", "?") if rep else "?"
         cab_str = f"{c_pdf}/{c_rep}"
 
-        todos_codigos = _ordenar_codigos(set(pdf_ap.keys()) | set(rep_ap.keys()))
+        # Ap.: solo apuestas leídas del PDF (tela/oficial), no unión con reporte
+        todos_codigos = _ordenar_codigos(set(pdf_ap.keys()))
         for idx, cod in enumerate(todos_codigos):
             v_pdf = pdf_ap.get(cod)
             v_rep = rep_ap.get(cod)
