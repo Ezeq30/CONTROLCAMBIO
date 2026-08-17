@@ -71,13 +71,14 @@ def _resolver_fecha_palermo(
 class AgenteComparacion:
     def comparar_san_isidro(self, ruta_pdf: str | Path, ruta_reporte: str | Path) -> dict:
         apuestas = obtener_apuestas_por_carrera(ruta_pdf)
-        coincide, diferencias = comparar_pdf_y_reporte(
+        coincide, diferencias, avisos = comparar_pdf_y_reporte(
             ruta_pdf, ruta_reporte, apuestas_raw=apuestas,
         )
         datos_reporte, _ = normalizar_reporte(ruta_reporte)
         return {
             "coincide": coincide,
             "diferencias": diferencias,
+            "avisos": avisos,
             "datos_pdf": normalizar_pdf(ruta_pdf, apuestas_raw=apuestas),
             "datos_reporte": datos_reporte,
             "fecha_reporte": extraer_fecha_reporte(ruta_reporte),
@@ -164,8 +165,8 @@ class AgenteComparacion:
         datos_pdf: dict,
         datos_posting: tuple,
     ) -> dict:
-        coincide, diferencias = comparar_oficial_con_posting(datos_pdf, datos_posting)
-        return {"coincide": coincide, "diferencias": diferencias}
+        coincide, diferencias, avisos = comparar_oficial_con_posting(datos_pdf, datos_posting)
+        return {"coincide": coincide, "diferencias": diferencias, "avisos": avisos}
 
     def comparar_laplata(self, ruta_xls: str | Path, ruta_reporte: str | Path) -> dict:
         coincide, diferencias = comparar_planilla_con_reporte(ruta_xls, ruta_reporte)

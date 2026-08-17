@@ -21,7 +21,7 @@ def _assert_salida_par_compacta(salida: str, *, min_lineas: int = 5) -> int:
     lineas = salida.splitlines()
     assert len(lineas) >= min_lineas
     ancho = max(len(l) for l in lineas)
-    assert ancho <= 140
+    assert ancho <= 145
     return ancho
 
 
@@ -35,15 +35,58 @@ def test_perfil_columnas_con_posting():
     ]
 
 
+def test_perfil_columnas_posting_rsm_table():
+    cols = tables._perfil_columnas_comparacion(
+        "OFICIAL", con_posting=True, compacto=True, par=True,
+        etiqueta_apuesta=tables._header_columna_rsm(par=True),
+    )
+    nombres = [c[0] for c in cols]
+    assert nombres[2] == "RSM"
+    assert "Ap." not in nombres
+
+
+def test_perfil_columnas_con_ap_rep():
+    cols = tables._perfil_columnas_comparacion(
+        "OFICIAL", con_posting=False, compacto=True, par=True, con_ap_rep=True,
+    )
+    nombres = [c[0] for c in cols]
+    assert nombres == [
+        "Carr.", "Cab.", "Ap.", "Ap.R", "Oficial", "Rep.", "Estado",
+    ]
+
+
+def test_perfil_columnas_si_bases_rsm():
+    cols = tables._perfil_columnas_comparacion(
+        "OFICIAL", con_posting=False, compacto=True, par=True,
+        con_ap_rep=True, bases_rsm=True,
+    )
+    nombres = [c[0] for c in cols]
+    assert nombres == [
+        "Carr.", "Cab.", "Ap.", "Ap.R", "Oficial", "B.RSM", "Estado",
+    ]
+    assert tables._header_columna_reporte(par=False, bases_rsm=True) == "BASES RSM TABLE"
+
+
 def test_caballos_par_no_trunca():
     kw = tables._kwargs_col_caballos(par=True)
     assert kw["width"] >= 5
     assert kw["min_width"] == 5
 
 
+def test_caballos_celda_roja_si_difieren():
+    assert "[fail]" in tables._caballos_celda_rich(8, 7)
+    assert "8/7" in tables._caballos_celda_rich(8, 7)
+    assert "[fail]" not in tables._caballos_celda_rich(8, 8)
+    assert tables._caballos_celda_rich_texto("8/7").startswith("[fail]")
+    assert tables._caballos_celda_rich_texto("8/8") == "8/8"
+
+
 def test_headers_completos_par():
     assert tables._header_columna_fuente("TELA OFICIAL", par=True) == "Tela Oficial"
     assert tables._header_columna_reporte(par=True) == "Rep."
+    assert tables._header_columna_reporte(par=True, bases_rsm=True) == "B.RSM"
+    assert tables._header_columna_rsm(par=True) == "RSM"
+    assert tables._header_columna_rsm(par=False) == "RSM Table"
     assert tables._header_columna_posting(par=True) == "Post."
 
 
@@ -162,11 +205,13 @@ def test_imprimir_par_muestra_ambas_tablas():
     )
     assert "OFICIAL vs Reporte" in salida
     assert "Oficial" in salida
-    assert "Rep." in salida or "Reporte" in salida
+    assert "B.RSM" in salida or "Rep." in salida or "Reporte" in salida
     cols_izq = [c.header for c in bloque_izq.tabla.columns]
     assert "Post." not in cols_izq
+    assert "Ap.R" in cols_izq
     cols_der = [c.header for c in bloque_der.tabla.columns]
     assert "Post." in cols_der
+    assert "RSM" in cols_der
     _assert_salida_par_compacta(salida)
 
 
@@ -192,14 +237,18 @@ def test_imprimir_par_san_isidro_tela_12_carreras_compacto():
     )
     cols_izq = [c.header for c in bloque_izq.tabla.columns]
     assert "Post." not in cols_izq
+    assert "Ap.R" in cols_izq
+    assert "B.RSM" in cols_izq
     cols_der = [c.header for c in bloque_der.tabla.columns]
     assert "Post." in cols_der
+    assert "RSM" in cols_der
+    assert "B.RSM" in cols_der
     console.width = 200
     salida = _capturar_salida_par(
         lambda: tables.imprimir_par_comparacion(bloque_izq, bloque_der)
     )
     ancho = _assert_salida_par_compacta(salida, min_lineas=40)
-    assert ancho <= 130
+    assert ancho <= 145
     assert "\u2026" not in salida
     assert "TELA OFICIAL vs Reporte" in salida
     assert "│  12  " in salida or "│ 12   " in salida or " 12 " in salida
@@ -396,7 +445,7 @@ def test_imprimir_par_laplata_no_planilla_sin_hueco():
     )
     _, _, _, _, _, ai, ad = tables._preparar_par_sin_panel(bloque_izq, bloque_der)
     assert ai <= 60, f"tabla izq demasiado ancha ({ai})"
-    assert ad <= 68, f"tabla der demasiado ancha ({ad})"
+    assert ad <= 72, f"tabla der demasiado ancha ({ad})"
     console.width = 400
     salida = _capturar_salida_par(
         lambda: tables.imprimir_par_comparacion(bloque_izq, bloque_der)
@@ -406,6 +455,7 @@ def test_imprimir_par_laplata_no_planilla_sin_hueco():
     assert (
         "no planilla" in salida
         or "no en planil" in salida
+        or "extra" in salida
         or "≠IMP" in salida
         or "≠CUA" in salida
         or "[ERR]" in salida

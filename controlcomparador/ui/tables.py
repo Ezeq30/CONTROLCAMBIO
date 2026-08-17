@@ -15,7 +15,7 @@ Vista par (San Isidro, Palermo, La Plata con posting):
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Optional
 
 from rich.console import Console, Group
@@ -33,10 +33,12 @@ from collections import defaultdict
 from controlcomparador.config import (
     ORDEN_APUESTAS, SYM_OK, SYM_FAIL, APUESTAS_PICK,
     PASES_POR_APUESTA, PASE_ORDER, APUESTAS_SIN_COMPARAR_VALOR,
+    APUESTAS_EXTRA_AVISO,
     MSG_EXA_IMP_JUNTOS, MSG_TRI_CUA_JUNTOS,
 )
 from controlcomparador.parsers.pdf import extraer_info_reunion_tela
-from controlcomparador.parsers.report import pares_conflictivos
+from controlcomparador.parsers.report import bases_de_carrera, pares_conflictivos, pools_de_carrera
+from controlcomparador.comparators.san_isidro import mensaje_extra_ap_r
 from controlcomparador.ui.console import console, ampliar_consola_windows, escribir_salida_fija, tema
 
 SeccionComparacionHtml = dict[str, Any]
@@ -56,6 +58,7 @@ class BloqueComparacion:
     num_errores: int
     num_avisos: int = 0
     subtitulo: Optional[str] = None
+    mensajes: list[str] = field(default_factory=list)
 
 
 def _texto_resumen_bloque(bloque: BloqueComparacion) -> Optional[str]:
@@ -293,6 +296,7 @@ _HTML_CSS_COMPARACION = """
   td.diff { color: #c62828; font-weight: 600; }
   td.bet { color: #2e7d32; font-weight: 600; }
   td.warn { color: #e65100; font-weight: 600; }
+  td.info { color: #0277bd; font-weight: 600; }
   tr:nth-child(even) { background: #f1f8e9; }
   tr.carrera-start td { border-top: 2px solid #c8e6c9; }
   .diff-list { padding: 8px 14px 12px; font-size: 12px; }
@@ -323,6 +327,11 @@ def _ordenar_codigos(codigos: set[str]) -> list[str]:
 
 def _es_fuente_planilla(label: Optional[str]) -> bool:
     return (label or "").strip().upper() in ("PLANILLA", "LA PLATA")
+
+
+def _es_fuente_si(label: Optional[str]) -> bool:
+    u = (label or "").strip().upper()
+    return "TELA" in u or u == "OFICIAL" or u.endswith("OFICIAL")
 
 
 def _codigos_vista_par_laplata(codigos: set[str]) -> list[str]:
@@ -391,7 +400,9 @@ def _header_columna_posting(*, par: bool = False) -> str:
     return "Post." if par else "Posting"
 
 
-def _header_columna_reporte(*, par: bool = False) -> str:
+def _header_columna_reporte(*, par: bool = False, bases_rsm: bool = False) -> str:
+    if bases_rsm:
+        return "B.RSM" if par else "BASES RSM TABLE"
     return "Rep." if par else "Reporte"
 
 
@@ -412,6 +423,23 @@ def _caballos_str(
     c_src = fuente.get("caballos", "?") if isinstance(fuente, dict) else "?"
     c_rep = rep.get("caballos", "?") if isinstance(rep, dict) else "?"
     return f"{c_src}/{c_rep}"
+
+
+def _caballos_celda_rich(c_src, c_rep) -> str:
+    """``8/8`` plano; ``8/7`` en rojo si oficial/tela y reporte no coinciden."""
+    texto = f"{c_src}/{c_rep}"
+    if str(c_src) != str(c_rep):
+        return f"[fail]{texto}[/fail]"
+    return texto
+
+
+def _caballos_celda_rich_texto(texto: str) -> str:
+    if "/" not in texto:
+        return texto
+    a, _, b = texto.partition("/")
+    if a != b:
+        return f"[fail]{texto}[/fail]"
+    return texto
 
 
 def _texto_aviso_no_en(etiq: str) -> str:
@@ -456,6 +484,22 @@ def _ancho_apuesta(*, compacto: bool = False, par: bool = False) -> int:
     return 3 if par else 4
 
 
+def _header_columna_rsm(*, par: bool = False) -> str:
+    """Códigos de apuesta leídos del bloque RSM TABLE del reporte/posting."""
+    return "RSM" if par else "RSM Table"
+
+
+def _kwargs_col_apuesta(
+    header: str = "Ap.",
+    *,
+    compacto: bool = False,
+    par: bool = False,
+) -> dict:
+    wa = _ancho_apuesta(compacto=compacto, par=par)
+    ancho = wa if par else max(wa, len(header))
+    return {"style": "codigo", "width": ancho, "min_width": wa, "no_wrap": True}
+
+
 def _ancho_caballos(*, compacto: bool = False, par: bool = False) -> int:
     if par:
         return 6
@@ -477,23 +521,29 @@ def _perfil_columnas_comparacion(
     con_posting: bool = False,
     compacto: bool = False,
     par: bool = False,
+    con_ap_rep: bool = False,
+    etiqueta_apuesta: str = "Ap.",
+    bases_rsm: bool = False,
 ) -> list[tuple[str, dict]]:
-    """Columnas unificadas: Carr.|Cab.|Ap.|Fuente|Rep.|[Post.]|Estado.
-
-    Modo ``par=True``: headers cortos (Rep., Post.), anchos compactos; en vista par
-    la tabla izquierda suele llamarse con ``con_posting=False`` (6 cols).
-    """
+    """Columnas: Carr.|Cab.|Ap.|[Ap.R]|Fuente|Rep.|[Post.]|Estado."""
     wv = _ancho_valor(compacto=compacto, par=par)
     wc = _ancho_carrera(compacto=compacto, par=par)
-    wa = _ancho_apuesta(compacto=compacto, par=par)
     col_fuente, kwargs_fuente = _kwargs_col_fuente(etiq_fuente, compacto=compacto, par=par)
+    header_rep = _header_columna_reporte(par=par, bases_rsm=bases_rsm)
+    wr = wv if par else max(wv, len(header_rep))
     columnas: list[tuple[str, dict]] = [
         ("Carr.", {"style": "carrera", "width": wc, "justify": "center"}),
         ("Cab.", _kwargs_col_caballos(compacto=compacto, par=par)),
-        ("Ap.", {"style": "codigo", "width": wa, "min_width": wa, "no_wrap": True}),
-        (col_fuente, kwargs_fuente),
-        (_header_columna_reporte(par=par), {"justify": "right", "width": wv}),
+        (etiqueta_apuesta, _kwargs_col_apuesta(etiqueta_apuesta, compacto=compacto, par=par)),
     ]
+    if con_ap_rep:
+        columnas.append(
+            ("Ap.R", {"style": "codigo", "width": 4, "min_width": 4, "no_wrap": True}),
+        )
+    columnas.extend([
+        (col_fuente, kwargs_fuente),
+        (header_rep, {"justify": "right", "width": wr, "min_width": wv, "no_wrap": True}),
+    ])
     if con_posting:
         columnas.append((_header_columna_posting(par=par), {"justify": "right", "width": wv}))
     columnas.append(("Estado", _kwargs_col_estado(compacto=compacto, par=par)))
@@ -569,8 +619,17 @@ def _fila_es_error(estado_markup: str) -> bool:
     return SYM_FAIL in estado_markup
 
 
+def _aviso_extra_oficial() -> str:
+    """EXA/TRI en reporte/posting pero no en oficial (ALL por comodidad)."""
+    return "[cyan]extra[/cyan]"
+
+
 def _fila_es_aviso(estado_markup: str) -> bool:
-    return not _fila_es_error(estado_markup) and "no en " in estado_markup.lower()
+    plano = estado_markup.lower()
+    return (
+        not _fila_es_error(estado_markup)
+        and ("no en " in plano or "extra" in plano)
+    )
 
 
 def _fila_es_diferencia(estado_markup: str) -> bool:
@@ -603,7 +662,7 @@ def _registrar_seccion_html(
 
 
 def _apuestas_flat_por_carrera(datos: dict) -> dict[int, dict[str, Optional[float]]]:
-    """Normaliza datos PDF/planilla a {carrera: {codigo: valor}}."""
+    """Normaliza datos PDF/planilla/reporte SI a {carrera: {codigo: valor}}."""
     flat: dict[int, dict[str, Optional[float]]] = {}
     for num, d in datos.items():
         if isinstance(d, dict) and "apuestas" in d:
@@ -613,35 +672,85 @@ def _apuestas_flat_por_carrera(datos: dict) -> dict[int, dict[str, Optional[floa
     return flat
 
 
+def datos_reporte_como_tuple(datos_reporte: dict) -> tuple[dict, set[str]]:
+    """Montos RSM (``bases``) al formato de la tabla posting."""
+    flat: dict[int, dict[str, Optional[float]]] = {}
+    for num, d in datos_reporte.items():
+        if isinstance(d, dict):
+            flat[num] = bases_de_carrera(d)
+        else:
+            flat[num] = d
+    return flat, set()
+
+
+def _ok_estado() -> str:
+    return f"[green]{SYM_OK}[/green]"
+
+
+def _err_estado() -> str:
+    return f"[red]{SYM_FAIL}[/red]"
+
+
 def _estado_posting_triple(
     v_pos: Optional[float],
     v_fuente: Optional[float],
     v_rep: Optional[float],
     etiq_fuente: str,
+    codigo: str | None = None,
+    en_pos: bool | None = None,
+    en_src: bool | None = None,
+    en_rep: bool | None = None,
+    permitir_extra: bool = True,
 ) -> str:
-    """Posting debe alinearse con reporte y con tela/oficial/planilla."""
-    if v_pos == v_rep:
-        if v_fuente is None and v_rep is not None:
-            return _msg_no_en(etiq_fuente)
-        if v_fuente is None or v_fuente == v_pos:
-            return f"[green]{SYM_OK}[/green]"
-    if v_pos is None and v_rep is None and v_fuente is None:
-        return f"[green]{SYM_OK}[/green]"
-    if v_pos is None:
-        if v_rep is not None and v_fuente is not None and v_rep == v_fuente:
+    """Cruza posting, oficial y reporte. Presencia ≠ monto None (GAN/SEG/TER)."""
+    extra_exa_tri = (
+        permitir_extra and bool(codigo) and codigo in APUESTAS_EXTRA_AVISO
+    )
+    if en_pos is None:
+        en_pos = v_pos is not None
+    if en_src is None:
+        en_src = v_fuente is not None
+    if en_rep is None:
+        en_rep = v_rep is not None
+
+    if codigo in APUESTAS_SIN_COMPARAR_VALOR:
+        if en_src and en_rep:
+            return _ok_estado()
+        if en_src and not en_rep:
+            return _err_estado()
+        if not en_src and en_rep:
+            return _aviso_extra_oficial() if extra_exa_tri else _err_estado()
+        return _ok_estado()
+
+    extra_presente = bool(en_rep or en_pos or v_rep is not None)
+    if extra_exa_tri and not en_src and extra_presente:
+        if (
+            en_pos
+            and v_pos is not None
+            and v_rep is not None
+            and abs(v_pos - v_rep) > 0.01
+        ):
+            return _err_estado()
+        return _aviso_extra_oficial()
+
+    if en_src and en_rep:
+        if v_fuente != v_rep and not (
+            v_fuente is not None and v_rep is not None and abs(v_fuente - v_rep) <= 0.01
+        ):
+            return _err_estado()
+        if not en_pos:
             return _aviso_no_en_posting()
-        if v_rep is not None:
-            return _aviso_no_en_reporte()
-        if v_fuente is not None:
-            return _msg_no_en(etiq_fuente)
-    if v_rep is None:
-        if v_pos is not None and v_fuente is not None and v_pos == v_fuente:
-            return _aviso_no_en_reporte()
-        if v_pos is not None:
-            return _aviso_no_en_posting()
-    if v_fuente is None:
-        return _estado_apuesta(v_pos, v_rep, "posting", "reporte")
-    return f"[red]{SYM_FAIL}[/red]"
+        if v_pos is not None and v_rep is not None and abs(v_pos - v_rep) > 0.01:
+            return _err_estado()
+        return _ok_estado()
+
+    if en_src and not en_rep:
+        return _err_estado()
+    if not en_src and en_rep:
+        return _err_estado()
+    if not en_src and not en_rep and not en_pos:
+        return _ok_estado()
+    return _err_estado()
 
 
 _RICH_TAG_RE = re.compile(r"\[/?[^\]]+\]")
@@ -651,14 +760,45 @@ def _estado_plano(estado_markup: str) -> str:
     return _RICH_TAG_RE.sub("", estado_markup)
 
 
-def _estado_apuesta(v1: Optional[float], v2: Optional[float], etiq1: str, etiq2: str) -> str:
-    if v1 == v2:
-        return f"[green]{SYM_OK}[/green]"
-    if v1 is None:
+def _estado_apuesta(
+    v1: Optional[float],
+    v2: Optional[float],
+    etiq1: str,
+    etiq2: str,
+    *,
+    en1: bool | None = None,
+    en2: bool | None = None,
+    codigo: str | None = None,
+    permitir_extra: bool = True,
+) -> str:
+    extra = permitir_extra and bool(codigo) and codigo in APUESTAS_EXTRA_AVISO
+    if en1 is None:
+        en1 = v1 is not None
+    if en2 is None:
+        en2 = v2 is not None
+    if codigo in APUESTAS_SIN_COMPARAR_VALOR:
+        if en1 and en2:
+            return _ok_estado()
+        if en1 and not en2:
+            return _err_estado()
+        if not en1 and en2:
+            return _aviso_extra_oficial() if extra else _err_estado()
+        return _ok_estado()
+    if extra and not en1 and en2:
+        return _aviso_extra_oficial()
+    if en1 and en2:
+        if v1 == v2:
+            return _ok_estado()
+        return _err_estado()
+    if en1 and not en2:
+        return _err_estado()
+    if not en1 and en2:
+        if extra:
+            return _aviso_extra_oficial()
+        if not permitir_extra:
+            return _err_estado()
         return _msg_no_en(etiq1)
-    if v2 is None:
-        return _aviso_no_en_reporte()
-    return f"[red]{SYM_FAIL}[/red]"
+    return _ok_estado()
 
 
 def _estado_par_excluyente(pareja: str) -> str:
@@ -677,35 +817,28 @@ def _estado_tres_fuentes(
     v_rep: Optional[float],
     v_pos: Optional[float],
     label_fuente: str,
+    codigo: str | None = None,
+    en_pdf: bool | None = None,
+    en_rep: bool | None = None,
+    en_pos: bool | None = None,
+    permitir_extra: bool = True,
 ) -> str:
-    if v_pdf == v_rep and (v_pos is None or v_pos == v_rep):
-        return f"[green]{SYM_OK}[/green]"
-    if v_pdf is None:
-        if v_rep is not None and v_pos is not None and v_rep == v_pos:
-            return _msg_no_en(label_fuente)
-        if v_rep is not None and v_pos is not None:
-            return f"[red]{SYM_FAIL}[/red]"
-        if v_rep is not None:
-            return _msg_no_en(label_fuente)
-        return _aviso_no_en_posting()
-    if v_rep is None:
-        if v_pos is not None and v_pos == v_pdf:
-            return _aviso_no_en_posting()
-        return _aviso_no_en_reporte()
-    if v_pos is not None and v_pos != v_rep:
-        return f"[red]{SYM_FAIL}[/red]"
-    return f"[red]{SYM_FAIL}[/red]"
+    return _estado_posting_triple(
+        v_pos, v_pdf, v_rep, label_fuente, codigo=codigo,
+        en_pos=en_pos, en_src=en_pdf, en_rep=en_rep,
+        permitir_extra=permitir_extra,
+    )
 
 
 def _html_clases_columna(col: str) -> tuple[str, str]:
     """Retorna (clase th, clase td base) para alineación HTML."""
     if col == "Estado":
         return "center", "center"
-    if col in ("Ap.", "Apuesta"):
+    if col in ("Ap.", "Apuesta", "Ap.R", "RSM", "RSM Table"):
         return "", ""
     if col in ("Carr.", "Carrera", "Cab.", "Caballos"):
         return "center", "center"
-    if col in ("Post", "Post.", "Rep", "Rep.", "Posting", "Reporte", "Oficial", "Ofic", "Tela", "Tela Oficial", "Bases", "Planilla", "Base", "Plan"):
+    if col in ("Post", "Post.", "Rep", "Rep.", "Posting", "Reporte", "Oficial", "Ofic", "Tela", "Tela Oficial", "Bases", "Planilla", "Base", "Plan", "Bases RSM", "B.RSM", "BASES RSM TABLE"):
         return "num", "num"
     return "num", "num"
 
@@ -731,6 +864,8 @@ def imprimir_tabla_san_isidro(
         con_posting=incluir_posting_col,
         compacto=compacto,
         par=par,
+        con_ap_rep=True,
+        bases_rsm=True,
     )
 
     t = _crear_tabla_comparacion(columnas_def, par=par, compacto=compacto)
@@ -738,42 +873,63 @@ def imprimir_tabla_san_isidro(
     filas_html: list[list[str]] = []
     num_errores = 0
     num_avisos = 0
+    mensajes: list[str] = []
 
     todas = sorted(set(datos_pdf.keys()) | set(datos_reporte.keys()))
     for num_carrera in todas:
         pdf = datos_pdf.get(num_carrera, {})
         rep = datos_reporte.get(num_carrera, {})
         pdf_ap = pdf.get("apuestas", {}) if pdf else {}
-        rep_ap = rep.get("apuestas", {}) if rep else {}
+        pools = pools_de_carrera(rep) if rep else {}
+        bases = bases_de_carrera(rep) if rep else {}
         pos_ap = valores_posting.get(num_carrera, {})
         c_pdf = pdf.get("caballos", "?") if pdf else "?"
         c_rep = rep.get("caballos", "?") if rep else "?"
-        cab_str = f"{c_pdf}/{c_rep}"
+        cab_plano = f"{c_pdf}/{c_rep}"
+        cab_rich = _caballos_celda_rich(c_pdf, c_rep)
 
-        # Ap.: solo apuestas leídas del PDF (tela/oficial), no unión con reporte
-        todos_codigos = _ordenar_codigos(set(pdf_ap.keys()))
+        todos_codigos = _ordenar_codigos(set(pdf_ap.keys()) | set(pools.keys()))
+        extras_ap_r: list[str] = []
         for idx, cod in enumerate(todos_codigos):
-            v_pdf = pdf_ap.get(cod)
-            v_rep = rep_ap.get(cod)
-            v_pos = pos_ap.get(cod) if incluir_posting_col else None
+            en_pdf = cod in pdf_ap
+            en_pools = cod in pools
+            if not en_pdf and en_pools:
+                extras_ap_r.append(cod)
+            v_pdf = pdf_ap.get(cod) if en_pdf else None
+            v_rep = bases.get(cod)
+            v_pos = pos_ap.get(cod) if incluir_posting_col and cod in pos_ap else None
             if incluir_posting_col:
-                estado = _estado_tres_fuentes(v_pdf, v_rep, v_pos, label_pdf)
+                estado = _estado_tres_fuentes(
+                    v_pdf, v_rep, v_pos, label_pdf, codigo=cod,
+                    en_pdf=en_pdf, en_rep=en_pools, en_pos=cod in pos_ap,
+                    permitir_extra=False,
+                )
             else:
-                estado = _estado_apuesta(v_pdf, v_rep, label_pdf, "reporte")
+                estado = _estado_apuesta(
+                    v_pdf, v_rep, label_pdf, "reporte",
+                    en1=en_pdf, en2=en_pools, codigo=cod,
+                    permitir_extra=False,
+                )
             num_errores, num_avisos = _contar_fila_estado(estado, num_errores, num_avisos)
 
             if idx == 0 and num_carrera != todas[0]:
                 t.add_section()
 
             carrera_str = str(num_carrera) if idx == 0 else ""
-            cab_show = cab_str if idx == 0 else ""
+            cab_show = cab_rich if idx == 0 else ""
+            cab_show_plano = cab_plano if idx == 0 else ""
 
+            ap_cell = f"[codigo]{cod}[/codigo]" if en_pdf else "[dim]-[/dim]"
+            ap_r = f"[codigo]{cod}[/codigo]" if en_pools else "[dim]-[/dim]"
+            ref_pdf = v_rep
+            ref_rep = v_pdf
             celdas = [
                 carrera_str,
                 cab_show,
-                f"[codigo]{cod}[/codigo]",
-                _celda_valor_rich(v_pdf, v_rep),
-                _celda_valor_rich(v_rep, v_pdf),
+                ap_cell,
+                ap_r,
+                _celda_valor_rich(v_pdf, ref_pdf),
+                _celda_valor_rich(v_rep, ref_rep),
             ]
             if incluir_posting_col:
                 celdas.append(_celda_valor_rich(v_pos, v_rep))
@@ -781,7 +937,9 @@ def imprimir_tabla_san_isidro(
             t.add_row(*celdas)
 
             fila_plana = [
-                carrera_str, cab_show, cod,
+                carrera_str, cab_show_plano,
+                cod if en_pdf else "-",
+                cod if en_pools else "-",
                 formato_valor(v_pdf), formato_valor(v_rep),
             ]
             if incluir_posting_col:
@@ -789,10 +947,14 @@ def imprimir_tabla_san_isidro(
             fila_plana.append(_estado_plano(estado))
             filas_html.append(fila_plana)
 
+        if extras_ap_r:
+            mensajes.append(mensaje_extra_ap_r(num_carrera, extras_ap_r))
+
     subtitulo = f"Fecha del reporte: {fecha_reporte}" if fecha_reporte else None
     bloque = BloqueComparacion(
         titulo=titulo, tabla=t, num_carreras=len(todas),
         num_errores=num_errores, num_avisos=num_avisos, subtitulo=subtitulo,
+        mensajes=mensajes,
     )
     _registrar_seccion_html(
         html_buffer, titulo, nombres_cols, filas_html,
@@ -841,13 +1003,19 @@ def imprimir_tablas_palermo(
 
         todos_codigos = _ordenar_codigos(set(ap_bases.keys()) | set(ap_rep.keys()))
         for idx, cod in enumerate(todos_codigos):
-            v_bases = ap_bases.get(cod)
-            v_rep = ap_rep.get(cod)
-            v_pos = pos_ap.get(cod) if incluir_posting_col else None
+            v_bases = ap_bases.get(cod) if cod in ap_bases else None
+            v_rep = ap_rep.get(cod) if cod in ap_rep else None
+            v_pos = pos_ap.get(cod) if incluir_posting_col and cod in pos_ap else None
             if incluir_posting_col:
-                estado = _estado_tres_fuentes(v_bases, v_rep, v_pos, "Bases Palermo")
+                estado = _estado_tres_fuentes(
+                    v_bases, v_rep, v_pos, "Bases Palermo", codigo=cod,
+                    en_pdf=cod in ap_bases, en_rep=cod in ap_rep, en_pos=cod in pos_ap,
+                )
             else:
-                estado = _estado_apuesta(v_bases, v_rep, "Bases Palermo", "reporte")
+                estado = _estado_apuesta(
+                    v_bases, v_rep, "Bases Palermo", "reporte",
+                    en1=cod in ap_bases, en2=cod in ap_rep, codigo=cod,
+                )
             num_errores, num_avisos = _contar_fila_estado(estado, num_errores, num_avisos)
 
             if idx == 0 and num_carrera != todas[0]:
@@ -925,27 +1093,35 @@ def imprimir_tabla_laplata(
         pos_ap = valores_posting.get(num_carrera, {})
         c_plan = plan.get("caballos", "?") if plan else "?"
         c_rep = rep.get("caballos", "?") if rep else "?"
-        cab_str = f"{c_plan}/{c_rep}"
+        cab_plano = f"{c_plan}/{c_rep}"
+        cab_rich = _caballos_celda_rich(c_plan, c_rep)
 
         if par:
             todos_codigos = _codigos_carrera_par_laplata(ap_plan, ap_rep, pos_ap)
         else:
             todos_codigos = _ordenar_codigos(set(ap_plan.keys()) | set(ap_rep.keys()))
         for idx, cod in enumerate(todos_codigos):
-            v_plan = ap_plan.get(cod)
-            v_rep = ap_rep.get(cod)
-            v_pos = pos_ap.get(cod) if incluir_posting_col else None
+            v_plan = ap_plan.get(cod) if cod in ap_plan else None
+            v_rep = ap_rep.get(cod) if cod in ap_rep else None
+            v_pos = pos_ap.get(cod) if incluir_posting_col and cod in pos_ap else None
             if incluir_posting_col:
-                estado = _estado_tres_fuentes(v_plan, v_rep, v_pos, "Planilla")
+                estado = _estado_tres_fuentes(
+                    v_plan, v_rep, v_pos, "Planilla", codigo=cod,
+                    en_pdf=cod in ap_plan, en_rep=cod in ap_rep, en_pos=cod in pos_ap,
+                )
             else:
-                estado = _estado_apuesta(v_plan, v_rep, "Planilla", "reporte")
+                estado = _estado_apuesta(
+                    v_plan, v_rep, "Planilla", "reporte",
+                    en1=cod in ap_plan, en2=cod in ap_rep, codigo=cod,
+                )
             num_errores, num_avisos = _contar_fila_estado(estado, num_errores, num_avisos)
 
             if idx == 0 and num_carrera != todas[0]:
                 t.add_section()
 
             carrera_str = str(num_carrera) if idx == 0 else ""
-            cab_show = cab_str if idx == 0 else ""
+            cab_show = cab_rich if idx == 0 else ""
+            cab_show_plano = cab_plano if idx == 0 else ""
             celdas = [
                 carrera_str, cab_show, f"[codigo]{cod}[/codigo]",
                 _celda_valor_rich(v_plan, v_rep),
@@ -956,7 +1132,7 @@ def imprimir_tabla_laplata(
             celdas.append(estado)
             t.add_row(*celdas)
 
-            fila = [carrera_str, cab_show, cod, formato_valor(v_plan), formato_valor(v_rep)]
+            fila = [carrera_str, cab_show_plano, cod, formato_valor(v_plan), formato_valor(v_rep)]
             if incluir_posting_col:
                 fila.append(formato_valor(v_pos))
             fila.append(_estado_plano(estado))
@@ -991,21 +1167,26 @@ def imprimir_tabla_posting_vs_reporte(
     valores_reporte, _ = datos_reporte
     fuente_flat = _apuestas_flat_por_carrera(datos_fuente) if datos_fuente else {}
     lbl = label_fuente or "OFICIAL"
+    es_si = _es_fuente_si(lbl)
     if datos_fuente:
         titulo = f"COMPARACION {lbl} · POSTING · REPORTE"
         columnas_def = _perfil_columnas_comparacion(
             lbl, con_posting=True, compacto=compacto, par=par,
+            etiqueta_apuesta=_header_columna_rsm(par=par),
+            bases_rsm=es_si,
         )
     else:
         titulo = "COMPARACION POSTING vs REPORTE"
         wv = _ancho_valor(compacto=compacto, par=par)
         wc = _ancho_carrera(compacto=compacto, par=par)
-        wa = _ancho_apuesta(compacto=compacto, par=par)
+        header_rsm = _header_columna_rsm(par=par)
+        header_rep = _header_columna_reporte(par=par, bases_rsm=es_si)
+        wr = wv if par else max(wv, len(header_rep))
         columnas_def = [
             ("Carr.", {"style": "carrera", "width": wc, "justify": "center"}),
-            ("Ap.", {"style": "codigo", "width": wa, "min_width": wa, "no_wrap": True}),
+            (header_rsm, _kwargs_col_apuesta(header_rsm, compacto=compacto, par=par)),
             (_header_columna_posting(par=par), {"justify": "right", "width": wv}),
-            (_header_columna_reporte(par=par), {"justify": "right", "width": wv}),
+            (header_rep, {"justify": "right", "width": wr, "min_width": wv, "no_wrap": True}),
             ("Estado", _kwargs_col_estado(compacto=compacto, par=par)),
         ]
     t = _crear_tabla_comparacion(columnas_def, par=par, compacto=compacto)
@@ -1020,23 +1201,45 @@ def imprimir_tabla_posting_vs_reporte(
         pos_ap = valores_posting.get(num_carrera, {})
         rep_ap = valores_reporte.get(num_carrera, {})
         src_ap = fuente_flat.get(num_carrera, {}) if datos_fuente else {}
+        meta = (datos_reporte_meta or {}).get(num_carrera, {}) if datos_reporte_meta else {}
+        usar_pools = isinstance(meta, dict) and "caballos" in meta and "apuestas" in meta
+        pools = set((meta.get("apuestas") or {}).keys()) if usar_pools else set(rep_ap.keys())
+        bases = bases_de_carrera(meta) if usar_pools else rep_ap
         if par and _es_fuente_planilla(lbl):
             codigos = _codigos_carrera_par_laplata(src_ap, rep_ap, pos_ap)
+        elif usar_pools:
+            # Filas = oficial + RSM TABLE + posting; AVAILABLE POOLS no entra.
+            codigos = _ordenar_codigos(
+                set(pos_ap.keys()) | set(src_ap.keys()) | set(bases.keys())
+            )
         else:
             codigos = _ordenar_codigos(set(pos_ap.keys()) | set(rep_ap.keys()) | set(src_ap.keys()))
         conflictos = (
-            pares_conflictivos(set(pos_ap.keys()) | set(rep_ap.keys()) | set(src_ap.keys()))
+            pares_conflictivos(set(pos_ap.keys()) | pools | set(src_ap.keys()))
             if validar_pares
             else {}
         )
         for idx, cod in enumerate(codigos):
-            v_pos = pos_ap.get(cod)
-            v_rep = rep_ap.get(cod)
-            v_src = src_ap.get(cod) if datos_fuente else None
+            v_pos = pos_ap.get(cod) if cod in pos_ap else None
+            v_rep = bases.get(cod) if usar_pools else (rep_ap.get(cod) if cod in rep_ap else None)
+            v_src = src_ap.get(cod) if datos_fuente and cod in src_ap else None
+            en_rep = (cod in pools) if usar_pools else (cod in rep_ap)
+            extra_fila = bool(
+                datos_fuente
+                and cod in APUESTAS_EXTRA_AVISO
+                and cod not in src_ap
+                and (en_rep or cod in pos_ap or v_rep is not None)
+            )
             if datos_fuente:
-                estado = _estado_posting_triple(v_pos, v_src, v_rep, lbl)
+                estado = _estado_posting_triple(
+                    v_pos, v_src, v_rep, lbl, codigo=cod,
+                    en_pos=cod in pos_ap, en_src=cod in src_ap, en_rep=en_rep,
+                )
             else:
-                estado = _estado_apuesta(v_pos, v_rep, "posting", "reporte")
+                estado = _estado_apuesta(
+                    v_pos, v_rep, "posting", "reporte",
+                    en1=cod in pos_ap, en2=en_rep, codigo=cod,
+                )
             if validar_pares:
                 estado = _aplicar_par_excluyente(estado, cod, conflictos)
             num_errores, num_avisos = _contar_fila_estado(estado, num_errores, num_avisos)
@@ -1046,16 +1249,21 @@ def imprimir_tabla_posting_vs_reporte(
 
             carrera_str = str(num_carrera) if idx == 0 else ""
             if datos_fuente:
-                cab_show = _caballos_str(num_carrera, datos_fuente, datos_reporte_meta) if idx == 0 else ""
+                cab_plano = _caballos_str(num_carrera, datos_fuente, datos_reporte_meta) if idx == 0 else ""
+                cab_show = _caballos_celda_rich_texto(cab_plano) if cab_plano else ""
+                ref_src = None if extra_fila else v_rep
+                en_rsm = (cod in bases) if usar_pools else True
+                rsm_rich = f"[codigo]{cod}[/codigo]" if en_rsm else "[dim]-[/dim]"
+                rsm_plano = cod if en_rsm else "-"
                 celdas = [
-                    carrera_str, cab_show, f"[codigo]{cod}[/codigo]",
-                    _celda_valor_rich(v_src, v_rep),
-                    _celda_valor_rich(v_rep, v_pos),
-                    _celda_valor_rich(v_pos, v_rep),
+                    carrera_str, cab_show, rsm_rich,
+                    _celda_valor_rich(v_src, ref_src),
+                    _celda_valor_rich(v_rep, None if extra_fila else v_pos),
+                    _celda_valor_rich(v_pos, None if extra_fila else v_rep),
                     estado,
                 ]
                 fila = [
-                    carrera_str, cab_show, cod,
+                    carrera_str, cab_plano, rsm_plano,
                     formato_valor(v_src), formato_valor(v_rep), formato_valor(v_pos),
                     _estado_plano(estado),
                 ]
@@ -1080,56 +1288,140 @@ def imprimir_tabla_posting_vs_reporte(
     return bloque
 
 
-def _validar_carreras_tela(datos: dict[int, dict]) -> dict[int, tuple[int, list[tuple[str, str]]]]:
-    """Valida cada carrera. Retorna {carrera: (caballos, [(observación, regla), ...])}."""
-    resultados: dict[int, tuple[int, list[tuple[str, str]]]] = {}
+HallazgoTela = tuple[str, str, str]  # obs, regla, "error"|"aviso"
+
+
+def _texto_aviso_imp_cua_ultima(apuestas: set[str]) -> str:
+    presentes = [c for c in ("IMP", "CUA") if c in apuestas]
+    if len(presentes) == 1:
+        return f"{presentes[0]} permitido en la última carrera"
+    return f"{' y '.join(presentes)} permitidos en la última carrera"
+
+
+def _validar_carreras_tela(
+    datos: dict[int, dict],
+) -> dict[int, tuple[int, list[HallazgoTela]]]:
+    """Valida cada carrera. Retorna {carrera: (caballos, [(obs, regla, nivel), ...])}.
+
+    En la última carrera no se exige EXA (≤11). IMP/CUA con < 12 caballos
+    son aviso, no error.
+    """
+    resultados: dict[int, tuple[int, list[HallazgoTela]]] = {}
+    ultima = max(datos) if datos else None
     for num_carrera in sorted(datos.keys()):
         d = datos[num_carrera]
         cab = d.get("caballos", 0)
         apuestas = set(d.get("apuestas", {}).keys())
-        violaciones: list[tuple[str, str]] = []
+        violaciones: list[HallazgoTela] = []
+        es_ultima = num_carrera == ultima
+        permitir_imp_cua_ultima = bool(es_ultima and cab < 12)
 
         if cab < 8 and "TER" in apuestas:
-            violaciones.append(("TER no debería estar", "< 8 caballos → sin TER"))
+            violaciones.append(("TER no debería estar", "< 8 caballos → sin TER", "error"))
         if cab >= 8 and "TER" not in apuestas:
-            violaciones.append(("TER debería estar", "≥ 8 caballos → TER obligatorio"))
+            violaciones.append(("TER debería estar", "≥ 8 caballos → TER obligatorio", "error"))
 
         if cab >= 12:
             if "IMP" not in apuestas:
-                violaciones.append(("IMP debería estar", "≥ 12 caballos → IMP obligatorio"))
+                violaciones.append(("IMP debería estar", "≥ 12 caballos → IMP obligatorio", "error"))
             if "EXA" in apuestas:
-                violaciones.append(("EXA no debería estar", "≥ 12 caballos → sin EXA"))
+                violaciones.append(("EXA no debería estar", "≥ 12 caballos → sin EXA", "error"))
 
         if cab <= 11:
-            if "EXA" not in apuestas:
-                violaciones.append(("EXA debería estar", "≤ 11 caballos → EXA obligatorio"))
-            if "IMP" in apuestas:
-                violaciones.append(("IMP no debería estar", "≤ 11 caballos → sin IMP"))
+            if "EXA" not in apuestas and not es_ultima:
+                violaciones.append(("EXA debería estar", "≤ 11 caballos → EXA obligatorio", "error"))
+            if "IMP" in apuestas and not permitir_imp_cua_ultima:
+                violaciones.append(("IMP no debería estar", "≤ 11 caballos → sin IMP", "error"))
 
         if cab == 4:
             if "SEG" in apuestas:
-                violaciones.append(("SEG no debería estar", "4 caballos → sin SEG/TRI/CUA"))
+                violaciones.append(("SEG no debería estar", "4 caballos → sin SEG/TRI/CUA", "error"))
             if "TRI" in apuestas:
-                violaciones.append(("TRI no debería estar", "4 caballos → sin SEG/TRI/CUA"))
-            if "CUA" in apuestas:
-                violaciones.append(("CUA no debería estar", "4 caballos → sin SEG/TRI/CUA"))
+                violaciones.append(("TRI no debería estar", "4 caballos → sin SEG/TRI/CUA", "error"))
+            if "CUA" in apuestas and not permitir_imp_cua_ultima:
+                violaciones.append(("CUA no debería estar", "4 caballos → sin SEG/TRI/CUA", "error"))
 
         if "EXA" in apuestas and "IMP" in apuestas:
-            violaciones.append((MSG_EXA_IMP_JUNTOS, MSG_EXA_IMP_JUNTOS))
+            violaciones.append((MSG_EXA_IMP_JUNTOS, MSG_EXA_IMP_JUNTOS, "error"))
 
         if "TRI" in apuestas and "CUA" in apuestas:
-            violaciones.append((MSG_TRI_CUA_JUNTOS, MSG_TRI_CUA_JUNTOS))
+            violaciones.append((MSG_TRI_CUA_JUNTOS, MSG_TRI_CUA_JUNTOS, "error"))
 
         picks = [cod for cod in apuestas if cod in APUESTAS_PICK]
         if len(picks) > 1:
             violaciones.append((
                 f"apuestas pick conflictivas ({', '.join(picks)})",
                 "Una sola pick por carrera (TPL/QTN/QTP/CAD)",
+                "error",
+            ))
+
+        if permitir_imp_cua_ultima and ("IMP" in apuestas or "CUA" in apuestas):
+            violaciones.append((
+                _texto_aviso_imp_cua_ultima(apuestas),
+                "< 12 caballos → IMP/CUA permitidos (última carrera)",
+                "aviso",
             ))
 
         resultados[num_carrera] = (cab, violaciones)
 
     return resultados
+
+
+def _datos_reporte_para_validar(datos_reporte: dict) -> dict[int, dict]:
+    """Caballos del reporte + AVAILABLE POOLS (Ap.R), no bases RSM."""
+    out: dict[int, dict] = {}
+    for num, d in (datos_reporte or {}).items():
+        if not isinstance(d, dict):
+            continue
+        out[num] = {
+            "caballos": d.get("caballos", 0),
+            "apuestas": pools_de_carrera(d),
+        }
+    return out
+
+
+def _es_error_hallazgo(h: HallazgoTela) -> bool:
+    return h[2] != "aviso"
+
+
+def _errores_hallazgos(hallazgos: list[HallazgoTela]) -> list[HallazgoTela]:
+    return [h for h in hallazgos if _es_error_hallazgo(h)]
+
+
+def _avisos_hallazgos(hallazgos: list[HallazgoTela]) -> list[HallazgoTela]:
+    return [h for h in hallazgos if h[2] == "aviso"]
+
+
+def _mensaje_hallazgo(num_carrera: int, cab: int, etiqueta: str, obs: str, regla: str) -> str:
+    return f"Carrera {num_carrera} ({cab} cab. {etiqueta}): {obs} — {regla}"
+
+
+def resumen_validaciones_tela(
+    datos_pdf: dict[int, dict],
+    datos_reporte: Optional[dict] = None,
+    etiqueta_fuente: str = "oficial",
+) -> tuple[bool, list[str], list[str]]:
+    """Reglas de tela (TER/EXA/IMP/pares/picks) sobre oficial/tela y, si hay, el reporte.
+
+    El reporte se valida con sus caballos y Ap.R (pools), no con bases RSM.
+    ``ok`` solo mira errores; los avisos (última carrera IMP/CUA) no fallan.
+    """
+    errores: list[str] = []
+    avisos: list[str] = []
+
+    def _acumular(datos: dict, etiqueta: str) -> None:
+        for num_carrera, (cab, hallazgos) in _validar_carreras_tela(datos).items():
+            for obs, regla, nivel in hallazgos:
+                linea = _mensaje_hallazgo(num_carrera, cab, etiqueta, obs, regla)
+                if nivel == "aviso":
+                    avisos.append(linea)
+                else:
+                    errores.append(linea)
+
+    _acumular(datos_pdf, etiqueta_fuente)
+    if datos_reporte:
+        _acumular(_datos_reporte_para_validar(datos_reporte), "reporte")
+    return len(errores) == 0, errores, avisos
 
 
 _REGLAS_CABALLOS_VALIDACION_TELA: tuple[str, ...] = (
@@ -1170,19 +1462,24 @@ _ANCHO_VALIDACIONES_REGLAS = 46
 
 
 def _tabla_validaciones_carreras(
-    resultados: dict[int, tuple[int, list[tuple[str, str]]]],
+    resultados: dict[int, tuple[int, list[HallazgoTela]]],
 ) -> Table:
     t = Table(box=box.SIMPLE, header_style="bold", expand=False)
     t.add_column("Carrera", style="yellow", width=6)
     t.add_column("Caballos", justify="center", width=8)
     t.add_column("Observación", width=36)
     for num_carrera in sorted(resultados.keys()):
-        cab, violaciones = resultados[num_carrera]
-        if not violaciones:
+        cab, hallazgos = resultados[num_carrera]
+        if not hallazgos:
             obs = "[green]OK[/green]"
         else:
-            obs = " / ".join(obs for obs, _ in violaciones)
-            obs = f"[yellow]{obs}[/yellow]"
+            partes: list[str] = []
+            for texto, _, nivel in hallazgos:
+                if nivel == "aviso":
+                    partes.append(f"[cyan]{texto}[/cyan]")
+                else:
+                    partes.append(f"[yellow]{texto}[/yellow]")
+            obs = " / ".join(partes)
         t.add_row(str(num_carrera), str(cab), obs)
     return t
 
@@ -1196,7 +1493,7 @@ def _panel_reglas_validacion() -> Panel:
     )
 
 
-def _mostrar_validaciones(resultados: dict[int, tuple[int, list[tuple[str, str]]]]) -> None:
+def _mostrar_validaciones(resultados: dict[int, tuple[int, list[HallazgoTela]]]) -> None:
     tabla = _tabla_validaciones_carreras(resultados)
     panel_reglas = _panel_reglas_validacion()
     ancho_izq = _ANCHO_VALIDACIONES_TABLA
@@ -1208,7 +1505,7 @@ def _mostrar_validaciones(resultados: dict[int, tuple[int, list[tuple[str, str]]
     console.print()
 
 
-def _html_panel_validaciones(resultados: dict[int, tuple[int, list[tuple[str, str]]]]) -> str:
+def _html_panel_validaciones(resultados: dict[int, tuple[int, list[HallazgoTela]]]) -> str:
     """Panel HTML de validaciones por carrera."""
     html = '<div class="grid-panel panel-validaciones">\n'
     html += '<div class="section-title">VALIDACIONES</div>\n'
@@ -1216,14 +1513,22 @@ def _html_panel_validaciones(resultados: dict[int, tuple[int, list[tuple[str, st
     html += "<th>Carrera</th><th>Caballos</th><th>Observación</th>"
     html += "</tr></thead>\n<tbody>\n"
     for num_carrera in sorted(resultados.keys()):
-        cab, violaciones = resultados[num_carrera]
-        if not violaciones:
+        cab, hallazgos = resultados[num_carrera]
+        errores = _errores_hallazgos(hallazgos)
+        avisos = _avisos_hallazgos(hallazgos)
+        if not hallazgos:
             html += (
                 f"<tr><td class=\"center\">{num_carrera}</td><td class=\"center\">{cab}</td>"
                 f"<td class=\"ok\">OK</td></tr>\n"
             )
+        elif not errores:
+            obs = " / ".join(o for o, _, _ in avisos)
+            html += (
+                f"<tr><td class=\"center\">{num_carrera}</td><td class=\"center\">{cab}</td>"
+                f"<td class=\"info\">{obs}</td></tr>\n"
+            )
         else:
-            obs = " / ".join(obs for obs, _ in violaciones)
+            obs = " / ".join(o for o, _, _ in hallazgos)
             html += (
                 f"<tr><td class=\"center\">{num_carrera}</td><td class=\"center\">{cab}</td>"
                 f"<td class=\"warn\">{obs}</td></tr>\n"
@@ -1245,7 +1550,7 @@ def _html_panel_reglas() -> str:
     return html
 
 
-def _html_validaciones_tela(resultados: dict[int, tuple[int, list[tuple[str, str]]]]) -> str:
+def _html_validaciones_tela(resultados: dict[int, tuple[int, list[HallazgoTela]]]) -> str:
     """Bloque validaciones + reglas (compat tests / export parcial)."""
     return _html_panel_validaciones(resultados) + _html_panel_reglas()
 
@@ -1542,14 +1847,13 @@ def exportar_resumen_html(datos: dict[int, dict], ruta_pdf: str | Path, ruta_sal
   }}
   .top-row {{
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 1fr;
     align-items: start;
     border-bottom: 1px solid #c8e6c9;
   }}
   .section-bases {{
     width: 100%;
     min-width: 0;
-    border-right: 1px solid #e0e0e0;
   }}
   .bases-wrap {{
     width: 100%;
@@ -1583,10 +1887,6 @@ def exportar_resumen_html(datos: dict[int, dict], ruta_pdf: str | Path, ruta_sal
     width: 5.5em;
     text-align: right;
     white-space: nowrap;
-  }}
-  .top-row .panel-validaciones {{
-    border-right: none;
-    height: 100%;
   }}
   .resumen-box {{
     display: flex;
@@ -1653,6 +1953,7 @@ def exportar_resumen_html(datos: dict[int, dict], ruta_pdf: str | Path, ruta_sal
   td.bet {{ color: #2e7d32; font-weight: 600; }}
   td.ok {{ color: #2e7d32; font-weight: 600; }}
   td.warn {{ color: #e65100; font-weight: 600; }}
+  td.info {{ color: #0277bd; font-weight: 600; }}
   tr:nth-child(even) {{ background: #f1f8e9; }}
   tr:nth-child(odd) {{ background: #fff; }}
   @page {{
@@ -1697,11 +1998,8 @@ def exportar_resumen_html(datos: dict[int, dict], ruta_pdf: str | Path, ruta_sal
 </table>
 </div>
 </div>
+</div>
 """
-
-    resultados_val = _validar_carreras_tela(datos)
-    html += _html_panel_validaciones(resultados_val)
-    html += "</div>\n"  # top-row
 
     # --- Resumen de bases únicas ---
     from collections import defaultdict
@@ -1761,15 +2059,24 @@ def _html_tabla_seccion(seccion: SeccionComparacionHtml, wrap_col: bool = False)
             col = columnas[i] if i < len(columnas) else ""
             _, base_cls = _html_clases_columna(col)
             td_cls = ""
-            if col == "Ap." or col == "Apuesta":
+            if col in ("Ap.", "Apuesta", "RSM", "RSM Table"):
                 td_cls = ' class="bet"'
+            elif col == "Ap.R":
+                td_cls = ' class="dim"' if str(celda) == "-" else ' class="bet"'
+            elif col in ("Cab.", "Caballos"):
+                texto = str(celda)
+                if "/" in texto:
+                    a, _, b = texto.partition("/")
+                    td_cls = ' class="center diff"' if a != b else ' class="center"'
+                else:
+                    td_cls = ' class="center"'
             elif col == "Estado":
                 texto = str(celda)
                 if SYM_OK in texto:
                     td_cls = ' class="center ok"'
                 elif SYM_FAIL in texto:
                     td_cls = ' class="center diff"'
-                elif "no en " in texto.lower():
+                elif "no en " in texto.lower() or texto.lower() == "extra":
                     td_cls = ' class="center warn"'
                 else:
                     td_cls = ' class="center"'
@@ -1824,14 +2131,18 @@ def exportar_comparacion_html(
             html += _html_tabla_seccion(sec, wrap_col=False)
             i += 1
 
-    hay_diffs = any(items for _, items in (diferencias or []))
+    hay_diffs = any(
+        items for titulo_diff, items in (diferencias or [])
+        if titulo_diff != "VALIDACIONES"
+    )
     if hay_diffs:
         html += '<div class="subtitle">DIFERENCIAS DETECTADAS</div>\n<ul class="diff-list">\n'
         for titulo_diff, items in diferencias:
-            if items:
-                html += f"<li><strong>{titulo_diff}</strong></li>\n"
-                for item in items:
-                    html += f"<li>{item}</li>\n"
+            if titulo_diff == "VALIDACIONES" or not items:
+                continue
+            html += f"<li><strong>{titulo_diff}</strong></li>\n"
+            for item in items:
+                html += f"<li>{item}</li>\n"
         html += "</ul>\n"
 
     html += "</div>\n</body>\n</html>"
@@ -1887,9 +2198,54 @@ def mostrar_resumen_comparacion(coincide: bool, diferencias: list[str], titulo: 
     console.print()
 
 
+def mostrar_resumen_validaciones_tela(
+    datos_pdf: dict[int, dict],
+    html_buffer: Optional[list[SeccionComparacionHtml]] = None,
+    datos_reporte: Optional[dict] = None,
+    etiqueta_fuente: str = "oficial",
+) -> list[str]:
+    """Panel VALIDACIONES: errores en rojo, avisos en cyan. Retorna solo errores."""
+    _, errores, avisos = resumen_validaciones_tela(
+        datos_pdf, datos_reporte=datos_reporte, etiqueta_fuente=etiqueta_fuente,
+    )
+    if errores:
+        console.print(Panel(
+            "\n".join(f"• {m}" for m in errores),
+            title=f"{SYM_FAIL} VALIDACIONES",
+            border_style="red",
+            style="warn",
+        ))
+        console.print()
+    elif not avisos:
+        console.print(Panel(
+            f"{SYM_OK} Validaciones OK",
+            title="VALIDACIONES",
+            border_style="#2e7d32",
+            style="ok",
+        ))
+        console.print()
+    if avisos:
+        mostrar_resumen_avisos(avisos, titulo="VALIDACIONES")
+    return errores
+
+
+def mostrar_resumen_avisos(avisos: list[str], titulo: str = "AVISOS") -> None:
+    if not avisos:
+        return
+    cuerpo = "\n".join(f"• {a}" for a in avisos)
+    console.print(Panel(
+        cuerpo,
+        title=titulo,
+        border_style="cyan",
+        style="dim",
+    ))
+    console.print()
+
+
 def mostrar_resumenes_consolidado(
     checks: list[tuple[str, bool, list[str]]],
     titulo_panel: str = "RESUMEN COMPARACIONES",
+    avisos: Optional[list[str]] = None,
 ) -> None:
     """Un solo panel con todas las comparaciones (evita resúmenes sueltos y tardíos)."""
     lineas: list[str] = []
@@ -1902,10 +2258,18 @@ def mostrar_resumenes_consolidado(
             lineas.append(f"[fail]{SYM_FAIL}[/fail] {nombre}")
             for d in diferencias:
                 lineas.append(f"  • {d}")
+    avisos = avisos or []
+    if avisos:
+        lineas.append("")
+        lineas.append("[cyan]AVISOS[/cyan]")
+        for a in avisos:
+            lineas.append(f"  • {a}")
+    if not lineas:
+        return
     console.print(Panel(
         "\n".join(lineas),
         title=f"[bold]{titulo_panel}[/bold]",
-        border_style="red" if hay_error else "#2e7d32",
+        border_style="red" if hay_error else ("cyan" if avisos else "#2e7d32"),
     ))
     console.print()
 

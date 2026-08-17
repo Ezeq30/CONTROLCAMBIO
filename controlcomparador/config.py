@@ -103,6 +103,9 @@ MAPEO_RSM_SIN_WPS: dict[str, str] = {
 # Códigos que solo se comparan en existencia, no en valor
 APUESTAS_SIN_COMPARAR_VALOR: set[str] = {"GAN", "SEG", "TER"}
 
+# EXA/TRI extra en reporte/posting (ALL por comodidad): aviso, no error
+APUESTAS_EXTRA_AVISO: frozenset[str] = frozenset({"EXA", "TRI"})
+
 # Apuestas "pick" mutuamente excluyentes por carrera
 APUESTAS_PICK: set[str] = {"TPL", "QTN", "QTP", "CAD"}
 

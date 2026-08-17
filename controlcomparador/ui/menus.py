@@ -201,13 +201,13 @@ def menu_principal() -> int:
     table.add_row("3", "LA PLATA")
     table.add_row("4", "AUTO-DETECT (carpeta)")
     table.add_row("5", "CONTROL XML")
-    table.add_row("6", "Salir")
+    table.add_row("0", "Salir")
     console.print(table)
     try:
         opcion = pedir_opcion("\n[bold]Seleccione el hipodromo[/bold]:")
     except EOFError:
-        return 6
+        return 0
     try:
         return int(opcion)
     except ValueError:
-        return 0
+        return -1

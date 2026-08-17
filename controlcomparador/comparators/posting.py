@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Optional
 
-from controlcomparador.config import APUESTAS_SIN_COMPARAR_VALOR
+from controlcomparador.config import APUESTAS_EXTRA_AVISO, APUESTAS_SIN_COMPARAR_VALOR
 from controlcomparador.parsers.posting import merge_posting_prices
 from controlcomparador.parsers.report import normalizar_reporte_palermo
 
@@ -67,10 +67,11 @@ def comparar_posting_con_reporte(
 def comparar_oficial_con_posting(
     datos_pdf: dict,
     datos_posting: tuple[dict[int, dict[str, Optional[float]]], set[str]],
-) -> tuple[bool, list[str]]:
+) -> tuple[bool, list[str], list[str]]:
     valores_posting, _ = datos_posting
 
     diferencias: list[str] = []
+    avisos: list[str] = []
     todas_las_carreras = set(datos_pdf.keys()) | set(valores_posting.keys())
 
     for num_carrera in sorted(todas_las_carreras):
@@ -92,9 +93,17 @@ def comparar_oficial_con_posting(
             diferencias.append(
                 f"Carrera {num_carrera}: apuestas presentes en Oficial pero no en Posting: {', '.join(sorted(solo_en_pdf))}"
             )
-        if solo_en_posting:
+        extra_aviso = solo_en_posting & APUESTAS_EXTRA_AVISO
+        extra_error = solo_en_posting - APUESTAS_EXTRA_AVISO
+        if extra_aviso:
+            avisos.append(
+                f"Carrera {num_carrera}: {', '.join(sorted(extra_aviso))} "
+                f"en reporte/posting pero no en oficial (aviso)"
+            )
+        if extra_error:
             diferencias.append(
-                f"Carrera {num_carrera}: apuestas presentes en Posting pero no en Oficial: {', '.join(sorted(solo_en_posting))}"
+                f"Carrera {num_carrera}: apuestas presentes en Posting pero no en Oficial: "
+                f"{', '.join(sorted(extra_error))}"
             )
 
         for codigo in sorted(aps_pdf & aps_posting):
@@ -116,4 +125,4 @@ def comparar_oficial_con_posting(
                 )
 
     coincide_todo = len(diferencias) == 0
-    return coincide_todo, diferencias
+    return coincide_todo, diferencias, avisos

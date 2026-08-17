@@ -87,22 +87,21 @@ class TestExportarResumenHtmlCompacto:
         assert "1er.Pase(C" not in html
         assert ">OK</td>" in html
 
-    def test_top_row_validaciones_y_bottom_reglas_pases(self, tmp_path: Path):
+    def test_top_row_bases_y_bottom_reglas_pases(self, tmp_path: Path):
         html = self._exportar(_datos_reunion_64_pases(), tmp_path)
         assert "top-row" in html
-        assert "panel-validaciones" in html
+        assert "panel-validaciones" not in html
+        assert "VALIDACIONES" not in html
         assert "bottom-grid" in html
         assert "panel-reglas" in html
         assert "panel-pases" in html
         assert "reglas-table" in html
         assert "resumen-total" in html
         assert " filas</span>" in html
-        # Validaciones junto a bases (antes de resumen), no al final del bottom-grid
         idx_top = html.find("top-row")
-        idx_val = html.find("panel-validaciones")
         idx_resumen = html.find("resumen-box")
         idx_bottom = html.find("bottom-grid")
-        assert idx_top < idx_val < idx_resumen < idx_bottom
+        assert idx_top < idx_resumen < idx_bottom
 
     def test_pases_incompleta_muestra_falta(self, tmp_path: Path):
         datos = {

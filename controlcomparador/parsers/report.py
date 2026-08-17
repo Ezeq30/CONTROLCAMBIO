@@ -27,7 +27,24 @@ def _codigos_carrera(datos_carrera: dict) -> set[str]:
     apuestas = datos_carrera.get("apuestas")
     if isinstance(apuestas, dict):
         return set(apuestas.keys())
-    return {k for k in datos_carrera.keys() if k != "caballos"}
+    return {k for k in datos_carrera.keys() if k not in ("caballos", "bases")}
+
+
+def pools_de_carrera(datos_carrera: dict) -> dict[str, Optional[float]]:
+    """Códigos de AVAILABLE POOLS (presencia)."""
+    if not isinstance(datos_carrera, dict):
+        return {}
+    return dict(datos_carrera.get("apuestas") or {})
+
+
+def bases_de_carrera(datos_carrera: dict) -> dict[str, Optional[float]]:
+    """Montos de RSM TABLE. Si no hay ``bases``, usa valores no nulos de ``apuestas``."""
+    if not isinstance(datos_carrera, dict):
+        return {}
+    if "bases" in datos_carrera:
+        return dict(datos_carrera.get("bases") or {})
+    ap = datos_carrera.get("apuestas") or {}
+    return {k: v for k, v in ap.items() if v is not None}
 
 
 def pares_conflictivos(codigos: set[str]) -> dict[str, str]:
@@ -78,6 +95,13 @@ def validar_pick_conflict(datos_reporte: dict[int, dict]) -> list[str]:
                 f"Carrera {num_carrera}: apuestas pick conflictivas ({', '.join(picks)})"
             )
     return errores
+
+
+def _codigos_en_pools(linea: str) -> set[str]:
+    """Códigos de apuesta en la zona AVAILABLE POOLS (antes de 1/9, SCR, 99)."""
+    corte = re.search(r"\b(?:SCR|\d+/\d+|99)\b", linea, re.IGNORECASE)
+    cabeza = linea[: corte.start()] if corte else linea
+    return set(PATRON_CODIGOS_LINEA.findall(cabeza))
 
 
 def expandir_race_map(race_map: str) -> list[int]:
@@ -146,7 +170,7 @@ def normalizar_reporte(ruta_reporte: str | Path) -> tuple[dict[int, dict], set[s
                 )
                 cantidad = len(caballo_re.findall(linea))
             caballos_por_carrera[num_carrera] = cantidad
-            apuestas_en_linea = set(PATRON_CODIGOS_LINEA.findall(linea))
+            apuestas_en_linea = _codigos_en_pools(linea)
             if num_carrera not in apuestas_por_carrera:
                 apuestas_por_carrera[num_carrera] = set()
             apuestas_por_carrera[num_carrera].update(apuestas_en_linea)
@@ -222,20 +246,12 @@ def normalizar_reporte(ruta_reporte: str | Path) -> tuple[dict[int, dict], set[s
 
     todas_las_carreras = set(caballos_por_carrera.keys()) | set(apuestas_por_carrera.keys()) | set(valores_por_carrera.keys())
     for num_carrera in sorted(todas_las_carreras):
+        pools = apuestas_por_carrera.get(num_carrera, set())
         resultado[num_carrera] = {
             "caballos": caballos_por_carrera.get(num_carrera, 0),
-            "apuestas": {},
+            "apuestas": {codigo: None for codigo in pools},
+            "bases": dict(valores_por_carrera.get(num_carrera, {})),
         }
-        apuestas_carrera = apuestas_por_carrera.get(num_carrera, set())
-        valores_carrera = valores_por_carrera.get(num_carrera, {})
-        for codigo in apuestas_carrera:
-            if codigo in valores_carrera:
-                resultado[num_carrera]["apuestas"][codigo] = valores_carrera[codigo]
-            else:
-                resultado[num_carrera]["apuestas"][codigo] = None
-        for codigo, valor in valores_carrera.items():
-            if codigo not in resultado[num_carrera]["apuestas"]:
-                resultado[num_carrera]["apuestas"][codigo] = valor
     return resultado, codigos_con_all
 
 

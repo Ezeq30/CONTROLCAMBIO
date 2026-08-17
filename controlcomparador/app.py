@@ -24,8 +24,11 @@ from controlcomparador.ui.tables import (
     imprimir_tabla_posting_vs_reporte,
     imprimir_par_comparacion,
     imprimir_resumen_tela,
+    datos_reporte_como_tuple,
     mostrar_resumen_comparacion,
     mostrar_resumenes_consolidado,
+    mostrar_resumen_avisos,
+    mostrar_resumen_validaciones_tela,
     ofrecer_export_comparacion_html,
     SeccionComparacionHtml,
     BloqueComparacion,
@@ -92,7 +95,10 @@ def _imprimir_comparacion_con_posting(
     validar_pares: bool = False,
 ) -> str:
     """Vista par: tabla principal (izq) + posting triple (der) vía ``imprimir_par_comparacion``."""
-    datos_reporte = normalizar_reporte_palermo(ruta_reporte)
+    if datos_reporte_meta:
+        datos_reporte = datos_reporte_como_tuple(datos_reporte_meta)
+    else:
+        datos_reporte = normalizar_reporte_palermo(ruta_reporte)
     bloque_der = imprimir_tabla_posting_vs_reporte(
         resultado_posting["datos_posting"],
         datos_reporte,
@@ -156,7 +162,7 @@ def _mostrar_resumenes_posting(
     *,
     vista_par: bool = False,
 ) -> None:
-    """Registra difs; en vista par solo muestra panel consolidado si hay fallos."""
+    """Registra difs; en vista par muestra panel si hay fallos o avisos."""
     label = f"{label_fuente} vs REPORTE"
     titulo_post = f"{label_fuente} · POSTING · REPORTE"
     checks = [
@@ -165,32 +171,60 @@ def _mostrar_resumenes_posting(
     ]
     for nombre, _, diferencias in checks:
         diffs.append((nombre, diferencias))
+    avisos: list[str] = []
+    for a in resultado_fuente.get("avisos") or []:
+        if a not in avisos:
+            avisos.append(a)
+    for a in resultado_posting.get("avisos") or []:
+        if a not in avisos:
+            avisos.append(a)
     if vista_par:
         fallos = [(n, c, d) for n, c, d in checks if not c]
-        if fallos:
-            mostrar_resumenes_consolidado(fallos, titulo_panel="DIFERENCIAS DETECTADAS")
+        if fallos or avisos:
+            mostrar_resumenes_consolidado(
+                fallos if fallos else [(n, True, []) for n, _, _ in checks],
+                titulo_panel="DIFERENCIAS DETECTADAS" if fallos else "AVISOS",
+                avisos=avisos,
+            )
         return
     for nombre, coincide, diferencias in checks:
         mostrar_resumen_comparacion(coincide, diferencias, nombre)
+    mostrar_resumen_avisos(avisos)
 
 
-@app.command()
-def version():
-    """Muestra la version del programa."""
-    console.print(f"[bold]ControlComparador[/bold] v{__version__}")
+def _mostrar_validaciones_si(
+    datos_pdf: dict,
+    html_buffer: list[SeccionComparacionHtml],
+    diffs: list[tuple[str, list[str]]],
+    datos_reporte: Optional[dict] = None,
+    tipo_pdf: Optional[str] = None,
+) -> None:
+    """Reglas de tela sobre oficial/tela y sobre el reporte (Ap.R)."""
+    etiqueta = "tela" if tipo_pdf and "TELA" in str(tipo_pdf).upper() else "oficial"
+    errores = mostrar_resumen_validaciones_tela(
+        datos_pdf,
+        html_buffer=html_buffer,
+        datos_reporte=datos_reporte,
+        etiqueta_fuente=etiqueta,
+    )
+    diffs.append(("VALIDACIONES", errores))
 
 
-@app.command()
-def san_isidro(
-    pdf: Path = typer.Argument(..., help="Ruta al PDF del programa oficial", exists=True, dir_okay=False, resolve_path=True),
-    reporte: Path = typer.Argument(..., help="Ruta al archivo de reporte TXT", exists=True, dir_okay=False, resolve_path=True),
-    posting: Optional[List[Path]] = typer.Option(None, "--posting", "-p", help="Archivo(s) de Posting Prices (hasta 2)", exists=True, dir_okay=False, resolve_path=True),
-    html: Optional[Path] = typer.Option(None, "--html", help="Exportar comparacion completa a HTML", dir_okay=False, resolve_path=True),
-):
-    """Compara PDF vs Reporte para SAN ISIDRO."""
+def _ejecutar_comparacion_san_isidro(
+    pdf: str | Path,
+    reporte: str | Path,
+    posting: Optional[list[Path]] = None,
+    *,
+    html: Optional[Path] = None,
+    preguntar_html: bool = True,
+) -> None:
+    """Misma comparación SI para CLI, auto-detect y menú opción 1."""
+    pdf = Path(pdf)
+    reporte = Path(reporte)
+    rutas_posting = [Path(p) for p in (posting or [])]
     html_buffer: list[SeccionComparacionHtml] = []
     diffs: list[tuple[str, list[str]]] = []
-    meta = [f"PDF: {pdf.name}", f"Reporte: {reporte.name}"]
+    meta = [f"PDF: {pdf.name}", f"Reporte: {reporte.name}", f"Version: {__version__}"]
 
     with console.status("[bold blue]Comparando San Isidro...[/bold blue]"):
         resultado = _agente.comparar_san_isidro(pdf, reporte)
@@ -198,13 +232,13 @@ def san_isidro(
 
     datos_posting = None
     resultado_posting = None
-    if posting:
-        meta.append(f"Posting: {', '.join(p.name for p in posting)}")
+    if rutas_posting:
+        meta.append(f"Posting: {', '.join(p.name for p in rutas_posting)}")
         with console.status("[bold blue]Comparando Posting Prices...[/bold blue]"):
-            resultado_posting = _agente.comparar_posting(posting, reporte)
+            resultado_posting = _agente.comparar_posting(rutas_posting, reporte)
             datos_posting = resultado_posting["datos_posting"]
 
-    par_posting = _con_posting(posting, resultado_posting)
+    par_posting = _con_posting(rutas_posting, resultado_posting)
     bloque = imprimir_tabla_san_isidro(
         resultado["datos_pdf"], resultado["datos_reporte"], datos_posting,
         resultado.get("fecha_reporte"), resultado.get("tipo_pdf"), html_buffer=html_buffer,
@@ -227,8 +261,36 @@ def san_isidro(
         label = f"{resultado.get('tipo_pdf', 'OFICIAL')} vs REPORTE"
         mostrar_resumen_comparacion(resultado["coincide"], resultado["diferencias"], label)
         diffs.append((label, resultado["diferencias"]))
+        mostrar_resumen_avisos(resultado.get("avisos") or [])
 
-    _exportar_html_si_corresponde(html_buffer, "san_isidro", diffs, meta, ruta_html=html, preguntar=html is None)
+    _mostrar_validaciones_si(
+        resultado["datos_pdf"], html_buffer, diffs,
+        datos_reporte=resultado.get("datos_reporte"),
+        tipo_pdf=resultado.get("tipo_pdf"),
+    )
+    _exportar_html_si_corresponde(
+        html_buffer, "san_isidro", diffs, meta, ruta_html=html, preguntar=preguntar_html,
+    )
+
+
+
+@app.command()
+def version():
+    """Muestra la version del programa."""
+    console.print(f"[bold]ControlComparador[/bold] v{__version__}")
+
+
+@app.command()
+def san_isidro(
+    pdf: Path = typer.Argument(..., help="Ruta al PDF del programa oficial", exists=True, dir_okay=False, resolve_path=True),
+    reporte: Path = typer.Argument(..., help="Ruta al archivo de reporte TXT", exists=True, dir_okay=False, resolve_path=True),
+    posting: Optional[List[Path]] = typer.Option(None, "--posting", "-p", help="Archivo(s) de Posting Prices (hasta 2)", exists=True, dir_okay=False, resolve_path=True),
+    html: Optional[Path] = typer.Option(None, "--html", help="Exportar comparacion completa a HTML", dir_okay=False, resolve_path=True),
+):
+    """Compara PDF vs Reporte para SAN ISIDRO."""
+    _ejecutar_comparacion_san_isidro(
+        pdf, reporte, posting, html=html, preguntar_html=html is None,
+    )
 
 
 @app.command()
@@ -421,47 +483,7 @@ def ejecutar_auto_comparacion(seleccion: str, deteccion: dict) -> None:
         if not pdf or not reporte:
             console.print("[red]Faltan archivos para San Isidro.[/red]")
             return
-        html_buffer: list[SeccionComparacionHtml] = []
-        diffs: list[tuple[str, list[str]]] = []
-        meta = [f"PDF: {pdf.name}", f"Reporte: {reporte.name}"]
-
-        with console.status("[bold blue]Comparando San Isidro...[/bold blue]"):
-            resultado = _agente.comparar_san_isidro(pdf, reporte)
-        meta.append(f"Tipo PDF: {resultado.get('tipo_pdf', 'OFICIAL')}")
-
-        datos_posting_auto = None
-        resultado_posting = None
-        if posting:
-            meta.append(f"Posting: {', '.join(p.name for p in posting)}")
-            with console.status("[bold blue]Comparando Posting Prices...[/bold blue]"):
-                resultado_posting = _agente.comparar_posting(posting, reporte)
-                datos_posting_auto = resultado_posting["datos_posting"]
-
-        par_posting = _con_posting(posting, resultado_posting)
-        bloque = imprimir_tabla_san_isidro(
-            resultado["datos_pdf"], resultado["datos_reporte"], datos_posting_auto,
-            resultado.get("fecha_reporte"), resultado.get("tipo_pdf"), html_buffer=html_buffer,
-            imprimir=not par_posting,
-            compacto=par_posting,
-            par=par_posting,
-        )
-        if par_posting:
-            _imprimir_comparacion_con_posting(
-                bloque, resultado_posting, reporte, html_buffer,
-                datos_fuente=resultado["datos_pdf"],
-                datos_reporte_meta=resultado["datos_reporte"],
-                label_fuente=resultado.get("tipo_pdf", "OFICIAL"),
-            )
-            _mostrar_resumenes_posting(
-                resultado.get("tipo_pdf", "OFICIAL"), resultado, resultado_posting, diffs,
-                vista_par=True,
-            )
-        else:
-            label = f"{resultado.get('tipo_pdf', 'OFICIAL')} vs REPORTE"
-            mostrar_resumen_comparacion(resultado["coincide"], resultado["diferencias"], label)
-            diffs.append((label, resultado["diferencias"]))
-
-        _exportar_html_si_corresponde(html_buffer, "san_isidro", diffs, meta)
+        _ejecutar_comparacion_san_isidro(pdf, reporte, posting)
 
     elif seleccion == "palermo":
         bases = info.get("bases_pdf")
@@ -635,7 +657,7 @@ def menu():
             Prompt.ask("[dim]Enter para continuar...[/dim]", default="")
         elif opcion == 5:
             _menu_control_xml_interactivo()
-        elif opcion == 6:
+        elif opcion == 0:
             console.print("[bold]Saliendo del programa.[/bold]")
             raise typer.Exit()
         else:
@@ -698,7 +720,7 @@ def _menu_san_isidro_interactivo():
                 ("3", "Seleccionar Posting Prices (TXT)"),
                 ("4", "COMPARAR ARCHIVOS"),
                 ("5", "Resumen de tela oficial (PDF)"),
-                ("6", "Volver al menu principal"),
+                ("0", "Volver al menu principal"),
             ],
         )
 
@@ -726,49 +748,11 @@ def _menu_san_isidro_interactivo():
                 console.print("[red]Debe seleccionar PDF y Reporte primero.[/red]")
                 Prompt.ask("[dim]Enter para continuar...[/dim]", default="")
                 continue
-            html_buffer: list[SeccionComparacionHtml] = []
-            diffs: list[tuple[str, list[str]]] = []
-            meta = [f"PDF: {Path(ruta_pdf).name}", f"Reporte: {Path(ruta_reporte).name}"]
-
-            with console.status("[bold blue]Comparando...[/bold blue]"):
-                resultado = _agente.comparar_san_isidro(ruta_pdf, ruta_reporte)
-            meta.append(f"Tipo PDF: {resultado.get('tipo_pdf', 'OFICIAL')}")
-
-            datos_posting_menu = None
-            res_p = None
-            if rutas_posting:
-                meta.append(f"Posting: {', '.join(p.name for p in rutas_posting)}")
-                with console.status("[bold blue]Comparando Posting Prices...[/bold blue]"):
-                    res_p = _agente.comparar_posting(rutas_posting, ruta_reporte)
-                    datos_posting_menu = res_p["datos_posting"]
-            par_posting = bool(rutas_posting and res_p)
-            bloque = imprimir_tabla_san_isidro(
-                resultado["datos_pdf"], resultado["datos_reporte"], datos_posting_menu,
-                resultado.get("fecha_reporte"), resultado.get("tipo_pdf"), html_buffer=html_buffer,
-                imprimir=not par_posting,
-                compacto=par_posting,
-                par=par_posting,
-            )
-            if par_posting:
-                _imprimir_comparacion_con_posting(
-                    bloque, res_p, ruta_reporte, html_buffer,
-                    datos_fuente=resultado["datos_pdf"],
-                    datos_reporte_meta=resultado["datos_reporte"],
-                    label_fuente=resultado.get("tipo_pdf", "OFICIAL"),
-                )
-                _mostrar_resumenes_posting(
-                    resultado.get("tipo_pdf", "OFICIAL"), resultado, res_p, diffs,
-                    vista_par=True,
-                )
-            else:
-                label = f"{resultado.get('tipo_pdf', 'OFICIAL')} vs REPORTE"
-                mostrar_resumen_comparacion(resultado["coincide"], resultado["diferencias"], label)
-                diffs.append((label, resultado["diferencias"]))
-            _exportar_html_si_corresponde(html_buffer, "san_isidro", diffs, meta)
+            _ejecutar_comparacion_san_isidro(ruta_pdf, ruta_reporte, rutas_posting)
             Prompt.ask("[dim]Enter para continuar...[/dim]", default="")
         elif op == "5":
             _resumen_tela_interactivo()
-        elif op == "6":
+        elif op == "0":
             return
 
 
@@ -824,7 +808,7 @@ def _menu_palermo_interactivo():
                 ("3", "Seleccionar oficial (PDF)"),
                 ("4", "Seleccionar Posting Prices (TXT)"),
                 ("5", "COMPARAR ARCHIVOS"),
-                ("6", "Volver al menu principal"),
+                ("0", "Volver al menu principal"),
             ],
         )
 
@@ -948,7 +932,7 @@ def _menu_palermo_interactivo():
                     )
             _exportar_html_si_corresponde(html_buffer, "palermo", diffs, meta)
             Prompt.ask("[dim]Enter para continuar...[/dim]", default="")
-        elif op == "6":
+        elif op == "0":
             return
 
 
@@ -971,7 +955,7 @@ def _menu_laplata_interactivo():
                 ("2", "Seleccionar reporte (TXT)"),
                 ("3", "Seleccionar Posting Prices (TXT)"),
                 ("4", "COMPARAR ARCHIVOS"),
-                ("5", "Volver al menu principal"),
+                ("0", "Volver al menu principal"),
             ],
         )
 
@@ -1034,7 +1018,7 @@ def _menu_laplata_interactivo():
                 diffs.append(("PLANILLA vs REPORTE", resultado["diferencias"]))
             _exportar_html_si_corresponde(html_buffer, "la_plata", diffs, meta)
             Prompt.ask("[dim]Enter para continuar...[/dim]", default="")
-        elif op == "5":
+        elif op == "0":
             return
 
 

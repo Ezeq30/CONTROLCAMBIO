@@ -7,7 +7,11 @@ from typing import Optional
 
 from controlcomparador.config import APUESTAS_IGNORAR_LAPLATA
 from controlcomparador.parsers.planilla import normalizar_planilla_laplata
-from controlcomparador.parsers.report import normalizar_reporte, validar_pick_conflict
+from controlcomparador.parsers.report import (
+    bases_de_carrera,
+    normalizar_reporte,
+    validar_pick_conflict,
+)
 
 
 def comparar_planilla_con_reporte(
@@ -46,7 +50,8 @@ def comparar_planilla_con_reporte(
             )
 
         apuestas_planilla = set(datos_planilla[num_carrera]["apuestas"].keys())
-        apuestas_reporte = set(datos_reporte[num_carrera]["apuestas"].keys())
+        apuestas_reporte = set((datos_reporte[num_carrera].get("apuestas") or {}).keys())
+        bases = bases_de_carrera(datos_reporte[num_carrera])
         solo_en_planilla = apuestas_planilla - apuestas_reporte
         solo_en_reporte = (apuestas_reporte - apuestas_planilla) - APUESTAS_IGNORAR_LAPLATA - codigos_con_all
 
@@ -64,7 +69,7 @@ def comparar_planilla_con_reporte(
             if codigo in APUESTAS_IGNORAR_LAPLATA:
                 continue
             valor_planilla = datos_planilla[num_carrera]["apuestas"][codigo]
-            valor_reporte = datos_reporte[num_carrera]["apuestas"][codigo]
+            valor_reporte = bases.get(codigo)
             if valor_planilla is not None and valor_reporte is not None:
                 if abs(valor_planilla - valor_reporte) > 0.01:
                     diferencias.append(
