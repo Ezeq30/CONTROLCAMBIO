@@ -1,6 +1,15 @@
 # -*- coding: utf-8 -*-
 """Tablas Rich, export HTML y vista par de consola (posting lado a lado).
 
+Vista par San Isidro (cada columna lee su fuente):
+  Izquierda — oficial vs reporte:
+    Ap. = códigos del PDF; Ap.R = AVAILABLE POOLS; Oficial = montos PDF;
+    B.RSM = montos RSM TABLE. Extra en Ap.R = [ERR] (está de más en el reporte).
+  Derecha — posting:
+    RSM = códigos del bloque RSM TABLE (no Ap.R); Oficial / B.RSM / Post. = montos.
+    EXA/TRI en B.RSM o posting y no en oficial = aviso cyan ``extra`` (ALL).
+  Validaciones: consola solamente; el HTML de comparación no las incluye.
+
 Vista par (San Isidro, Palermo, La Plata con posting):
   - Izquierda: fuente vs reporte (6 cols, sin Post.).
   - Derecha: posting vs fuente vs reporte (7 cols).
@@ -702,7 +711,12 @@ def _estado_posting_triple(
     en_rep: bool | None = None,
     permitir_extra: bool = True,
 ) -> str:
-    """Cruza posting, oficial y reporte. Presencia ≠ monto None (GAN/SEG/TER)."""
+    """Cruza posting, oficial y B.RSM. Presencia ≠ monto None (GAN/SEG/TER).
+
+    EXA/TRI no en oficial pero sí en posting o B.RSM → ``extra`` (no error),
+    salvo que los montos Post vs B.RSM difieran. La izquierda usa
+    ``permitir_extra=False``: extra en Ap.R es [ERR].
+    """
     extra_exa_tri = (
         permitir_extra and bool(codigo) and codigo in APUESTAS_EXTRA_AVISO
     )
@@ -854,6 +868,10 @@ def imprimir_tabla_san_isidro(
     compacto: bool = False,
     par: bool = False,
 ) -> BloqueComparacion:
+    """Tabla izquierda SI: Ap. (PDF), Ap.R (AVAILABLE POOLS), Ofic, B.RSM.
+
+    Extra en Ap.R no usa aviso ``extra``: es error (``permitir_extra=False``).
+    """
     valores_posting = datos_posting[0] if datos_posting else {}
     label_pdf = tipo_pdf or "OFICIAL"
     titulo = f"COMPARACION {label_pdf} vs REPORTE"
@@ -908,7 +926,7 @@ def imprimir_tabla_san_isidro(
                 estado = _estado_apuesta(
                     v_pdf, v_rep, label_pdf, "reporte",
                     en1=en_pdf, en2=en_pools, codigo=cod,
-                    permitir_extra=False,
+                    permitir_extra=False,  # Ap.R de más = [ERR], no extra
                 )
             num_errores, num_avisos = _contar_fila_estado(estado, num_errores, num_avisos)
 
@@ -1163,6 +1181,10 @@ def imprimir_tabla_posting_vs_reporte(
     par: bool = False,
     validar_pares: bool = False,
 ) -> BloqueComparacion:
+    """Tabla derecha: RSM (RSM TABLE), Ofic, B.RSM, Post.
+
+    EXA/TRI ALL no en oficial = ``extra``. IMP solo en Ap.R no aparece acá.
+    """
     valores_posting, _ = datos_posting
     valores_reporte, _ = datos_reporte
     fuente_flat = _apuestas_flat_por_carrera(datos_fuente) if datos_fuente else {}
@@ -1208,7 +1230,7 @@ def imprimir_tabla_posting_vs_reporte(
         if par and _es_fuente_planilla(lbl):
             codigos = _codigos_carrera_par_laplata(src_ap, rep_ap, pos_ap)
         elif usar_pools:
-            # Filas = oficial + RSM TABLE + posting; AVAILABLE POOLS no entra.
+            # Columna RSM: solo RSM TABLE + oficial + posting. Ap.R no genera filas.
             codigos = _ordenar_codigos(
                 set(pos_ap.keys()) | set(src_ap.keys()) | set(bases.keys())
             )
@@ -1253,6 +1275,7 @@ def imprimir_tabla_posting_vs_reporte(
                 cab_show = _caballos_celda_rich_texto(cab_plano) if cab_plano else ""
                 ref_src = None if extra_fila else v_rep
                 en_rsm = (cod in bases) if usar_pools else True
+                # Celda RSM: código si está en RSM TABLE; si no (GAN/SEG/TER) "-".
                 rsm_rich = f"[codigo]{cod}[/codigo]" if en_rsm else "[dim]-[/dim]"
                 rsm_plano = cod if en_rsm else "-"
                 celdas = [
@@ -1314,6 +1337,7 @@ def _validar_carreras_tela(
         apuestas = set(d.get("apuestas", {}).keys())
         violaciones: list[HallazgoTela] = []
         es_ultima = num_carrera == ultima
+        # Última carrera + <12 cab.: IMP/CUA permitidos (aviso azul). EXA no obligatorio.
         permitir_imp_cua_ultima = bool(es_ultima and cab < 12)
 
         if cab < 8 and "TER" in apuestas:
@@ -2097,7 +2121,7 @@ def exportar_comparacion_html(
     meta_lineas: Optional[list[str]] = None,
     diferencias: Optional[list[tuple[str, list[str]]]] = None,
 ) -> None:
-    """Genera HTML con todas las tablas de comparación (misma data que consola)."""
+    """Genera HTML con las tablas de comparación (sin panel VALIDACIONES)."""
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     meta_html = "".join(f'<div class="meta">{line}</div>' for line in (meta_lineas or []))
 
@@ -2133,7 +2157,7 @@ def exportar_comparacion_html(
 
     hay_diffs = any(
         items for titulo_diff, items in (diferencias or [])
-        if titulo_diff != "VALIDACIONES"
+        if titulo_diff != "VALIDACIONES"  # validaciones solo en consola
     )
     if hay_diffs:
         html += '<div class="subtitle">DIFERENCIAS DETECTADAS</div>\n<ul class="diff-list">\n'
@@ -2204,7 +2228,7 @@ def mostrar_resumen_validaciones_tela(
     datos_reporte: Optional[dict] = None,
     etiqueta_fuente: str = "oficial",
 ) -> list[str]:
-    """Panel VALIDACIONES: errores en rojo, avisos en cyan. Retorna solo errores."""
+    """Panel VALIDACIONES en consola (errores rojo, avisos cyan). No escribe HTML."""
     _, errores, avisos = resumen_validaciones_tela(
         datos_pdf, datos_reporte=datos_reporte, etiqueta_fuente=etiqueta_fuente,
     )

@@ -93,7 +93,7 @@ def comparar_oficial_con_posting(
             diferencias.append(
                 f"Carrera {num_carrera}: apuestas presentes en Oficial pero no en Posting: {', '.join(sorted(solo_en_pdf))}"
             )
-        extra_aviso = solo_en_posting & APUESTAS_EXTRA_AVISO
+        extra_aviso = solo_en_posting & APUESTAS_EXTRA_AVISO  # EXA/TRI ALL: aviso
         extra_error = solo_en_posting - APUESTAS_EXTRA_AVISO
         if extra_aviso:
             avisos.append(

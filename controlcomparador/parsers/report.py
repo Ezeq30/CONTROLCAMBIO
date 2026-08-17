@@ -31,14 +31,20 @@ def _codigos_carrera(datos_carrera: dict) -> set[str]:
 
 
 def pools_de_carrera(datos_carrera: dict) -> dict[str, Optional[float]]:
-    """Códigos de AVAILABLE POOLS (presencia)."""
+    """AVAILABLE POOLS del CardRpt: presencia de códigos (columna Ap.R).
+
+    No son montos. Un código acá y no en el oficial es error de más en el reporte.
+    """
     if not isinstance(datos_carrera, dict):
         return {}
     return dict(datos_carrera.get("apuestas") or {})
 
 
 def bases_de_carrera(datos_carrera: dict) -> dict[str, Optional[float]]:
-    """Montos de RSM TABLE. Si no hay ``bases``, usa valores no nulos de ``apuestas``."""
+    """Montos del bloque RSM TABLE (columnas B.RSM / RSM).
+
+    El ALL de EXA/TRI vive acá y en posting, no en AVAILABLE POOLS.
+    """
     if not isinstance(datos_carrera, dict):
         return {}
     if "bases" in datos_carrera:
@@ -146,6 +152,10 @@ def expandir_race_map(race_map: str) -> list[int]:
 
 
 def normalizar_reporte(ruta_reporte: str | Path) -> tuple[dict[int, dict], set[str]]:
+    """CardRpt SI/LP: ``apuestas`` = AVAILABLE POOLS; ``bases`` = RSM TABLE.
+
+    Retorna ``(por_carrera, codigos_con_all)``. ALL de EXA/TRI queda en bases.
+    """
     with open(ruta_reporte, "r", encoding="utf-8", errors="ignore") as f:
         contenido = f.read()
     resultado: dict[int, dict] = {}
@@ -248,6 +258,7 @@ def normalizar_reporte(ruta_reporte: str | Path) -> tuple[dict[int, dict], set[s
     for num_carrera in sorted(todas_las_carreras):
         pools = apuestas_por_carrera.get(num_carrera, set())
         resultado[num_carrera] = {
+            # apuestas = AVAILABLE POOLS (presencia); bases = RSM TABLE (montos)
             "caballos": caballos_por_carrera.get(num_carrera, 0),
             "apuestas": {codigo: None for codigo in pools},
             "bases": dict(valores_por_carrera.get(num_carrera, {})),

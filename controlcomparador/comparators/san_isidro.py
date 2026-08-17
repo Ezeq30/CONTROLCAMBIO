@@ -1,4 +1,9 @@
 # -*- coding: utf-8 -*-
+"""Comparación PDF (oficial/tela) vs CardRpt San Isidro.
+
+Presencia: PDF vs AVAILABLE POOLS (Ap.R). Extra en Ap.R = error.
+Montos: PDF vs RSM TABLE (bases). GAN/SEG/TER solo existencia.
+"""
 
 from __future__ import annotations
 
@@ -15,7 +20,7 @@ from controlcomparador.parsers.report import (
 
 
 def mensaje_extra_ap_r(num_carrera: int, codigos) -> str:
-    """Apuesta en AVAILABLE POOLS (Ap.R) que no está en el oficial."""
+    """Error de DIFERENCIAS: código en Ap.R (AVAILABLE POOLS) y no en el oficial."""
     vistos = set(codigos)
     ordenados = [c for c in ORDEN_APUESTAS if c in vistos]
     ordenados.extend(sorted(vistos - set(ordenados)))
@@ -29,6 +34,7 @@ def comparar_pdf_y_reporte(
     ruta_reporte: str | Path,
     apuestas_raw: Optional[list[list]] = None,
 ) -> tuple[bool, list[str], list[str]]:
+    """Compara PDF vs reporte. Extra en Ap.R va a diferencias, no a avisos."""
     datos_pdf = normalizar_pdf(ruta_pdf, apuestas_raw=apuestas_raw)
     datos_reporte, _ = normalizar_reporte(ruta_reporte)
     diferencias: list[str] = []
@@ -55,6 +61,7 @@ def comparar_pdf_y_reporte(
             )
 
         apuestas_pdf = set(datos_pdf[num_carrera]["apuestas"].keys())
+        # Presencia vs Ap.R; montos vs RSM TABLE (bases). Extra en Ap.R = error.
         pools = set((datos_reporte[num_carrera].get("apuestas") or {}).keys())
         bases = bases_de_carrera(datos_reporte[num_carrera])
         solo_en_pdf = apuestas_pdf - pools

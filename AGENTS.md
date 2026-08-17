@@ -56,7 +56,8 @@ pyinstaller ControlComparador.spec
 ### Módulos clave y sus funciones
 
 #### parsers/report.py - RSM TABLE TXT
-- `normalizar_reporte(ruta)` → `(dict, set)` — retorna tupla `(valores_por_carrera, codigos_con_all)` como `normalizar_reporte_palermo()`. Incluye apuestas que vienen solo del RSM TABLE (no solo del header). `codigos_con_all` trackea códigos con `ALL` race_map para excluirlos de `solo_en_reporte`.
+- `normalizar_reporte(ruta)` → `(dict, set)` — cada carrera tiene `apuestas` (AVAILABLE POOLS, presencia para Ap.R) y `bases` (montos RSM TABLE para B.RSM). `codigos_con_all` trackea códigos con `ALL` race_map.
+- `pools_de_carrera()` / `bases_de_carrera()` — helpers de esas dos fuentes.
 - `validar_pick_conflict(datos_reporte)` — verifica que ninguna carrera tenga dos apuestas pick (TPL/QTN/QTP/CAD) juntas, ya que son mutuamente excluyentes.
 
 #### parsers/pdf.py - Tela Oficial
@@ -72,6 +73,7 @@ pyinstaller ControlComparador.spec
 
 #### config.py
 - `APUESTAS_SIN_COMPARAR_VALOR = {"GAN", "SEG", "TER"}` — códigos que solo se comparan en existencia
+- `APUESTAS_EXTRA_AVISO = {"EXA", "TRI"}` — extra ALL en B.RSM/posting = aviso, no error (Ap.R extra sí es error)
 - `APUESTAS_PICK = {"TPL", "QTN", "QTP", "CAD"}` — apuestas pick mutuamente excluyentes por carrera
 - `APUESTAS_IGNORAR_LAPLATA = {"GAN", "SEG", "TER", "QTN"}` — ignoradas del lado reporte en La Plata
 - `PASES_POR_APUESTA = {"TPL": ["1er.Pase", "2do.Pase", "3er.Pase"], ...}` — dict de código → lista ordenada de pases esperados
@@ -94,12 +96,11 @@ pyinstaller ControlComparador.spec
 - Extrae pases con `extraer_pases_tela_oficial()` y los mergea en los datos para validación de secuencias
 
 #### ui/tables.py
-- Tabla dinámica: título y columna "OFICIAL" vs "TELA OFICIAL" según `tipo_pdf`
+- Tabla SI izquierda: Ap. (PDF) | Ap.R (AVAILABLE POOLS) | Ofic | B.RSM. Extra en Ap.R = `[ERR]`.
+- Tabla SI derecha: RSM (solo RSM TABLE) | Ofic | B.RSM | Post. EXA/TRI ALL no en oficial = `extra` (cyan).
 - `imprimir_resumen_tela(datos, ruta)` — muestra archivo + BASES POR APUESTA + RESUMEN BASES ÚNICAS + VALIDACIONES + CONTROL DE PASES (Rich tables)
-- `exportar_resumen_html(datos, ruta_pdf, ruta_salida)` — genera HTML standalone con marco verde, columnas 50/20/30%, width fit-content. Header "Reunión X — fecha — Hipódromo". Incluye secuencias de pases y resumen de bases únicas. Abre navegador automáticamente
-- `_mostrar_bases_por_apuesta(datos)` — tabla Rich agrupando apuestas por código+valor con formato "ALL" o rangos (1-8,10-13)
-- `_mostrar_resumen_bases_unicas(datos)` — debajo de BASES POR APUESTA, muestra en rojo las apuestas que tienen UN SOLO valor base (ej. "EXA: todas son de 2000"). Excluye GAN/SEG/TER (presencia)
-- `_validar_carreras_tela(datos)` — valida reglas: EXA ↔ IMP según caballos, TRI ↔ CUA exclusión, pick conflict (TPL/QTN/QTP/CAD), etc.
+- `exportar_resumen_html` / `exportar_comparacion_html` — **no** incluyen el panel VALIDACIONES (solo consola).
+- `_validar_carreras_tela(datos)` — reglas TER/EXA/IMP/pares/picks. Última carrera: no exige EXA (≤11); IMP/CUA con <12 cab. son aviso azul.
 - `_agrupar_pases_por_secuencia(datos)` — analiza pases desde cada 1er.Pase, agrupa por código de apuesta, muestra start→end carreras y marca COMPLETA/INCOMPLETA
 - `_mostrar_validacion_pases(datos)` — tabla Rich por apuesta (TPL/QTN/QTP/CAD) mostrando secuencias de pases, carreras start→end, y estado COMPLETA (verde) / INCOMPLETA (amarillo con faltantes)
 - `_format_carreras_list(carreras, total)` — "ALL", "1-3,5,7-9"
@@ -108,6 +109,12 @@ pyinstaller ControlComparador.spec
 
 - **Tela Oficial San Isidro**: anclaje por `APUESTAS:` (no `Premio`). Las líneas después de "Bolsa Total:" y antes del número de carrera son "extra bets" (pases). Se filtran con `es_apuesta_excluida()`. GAN/SEG/TER se extraen como presencia (None), no como valor.
 - **La Plata:** CUATERNA = QTN, CUATRIFECTA = CUA (al revés que otros hipódromos)
+- **San Isidro — dos fuentes del reporte:** `apuestas` = AVAILABLE POOLS (columna Ap.R, presencia). `bases` = RSM TABLE (columnas B.RSM / RSM, montos). Cada columna lee solo su fuente.
+- **Extra en Ap.R:** cualquier código en AVAILABLE POOLS que no esté en el oficial es error (`está de más en el reporte, no está en el oficial`), incluido IMP/EXA/TRI.
+- **Extra EXA/TRI en posting:** si EXA/TRI están en B.RSM o posting por ALL y no en el oficial, la tabla derecha marca `extra` (aviso cyan) y no compara contra el oficial. Si Post vs B.RSM difiere, sí es error.
+- **Columna RSM (derecha):** solo códigos del bloque RSM TABLE. Un IMP agregado solo en AVAILABLE POOLS no aparece ahí.
+- **Última carrera:** no se exige EXA con ≤11 caballos. Con <12 caballos, IMP y/o CUA son aviso azul (no error). En el resto de carreras las reglas no cambian. Pares EXA+IMP / TRI+CUA siguen siendo error.
+- **HTML:** las validaciones se muestran en consola; no se exportan al HTML de comparación ni al resumen de tela.
 - **San Isidro:** GAN, SEG, TER solo se comparan en existencia, no en valor
 - **Palermo:** Si EXA/TRI aparece UNA sola vez en el PDF, se expande a todas las carreras (regla "ALL si única línea")
 - **Posting:** El segundo archivo TXT sobrescribe al primero en caso de conflicto
@@ -119,7 +126,7 @@ pyinstaller ControlComparador.spec
 ### Comparadores
 
 #### comparators/san_isidro.py
-- `comparar_pdf_y_reporte()` — desempaqueta `normalizar_reporte()` como `(dict, set)`. Excluye `codigos_con_all` de `solo_en_reporte` (línea 45). Integra `validar_pick_conflict()`.
+- `comparar_pdf_y_reporte()` — presencia vs AVAILABLE POOLS; montos vs `bases` (RSM). Extra en Ap.R → `mensaje_extra_ap_r()`. Integra `validar_pick_conflict()`.
 
 #### comparators/palermo.py
 - `comparar_oficial_palermo_con_reporte()` — excluye `codigos_con_all` de `solo_en_reporte`.
