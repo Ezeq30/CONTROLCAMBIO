@@ -31,14 +31,28 @@ class TestFormatCarrerasList:
     def test_exa_todas_carreras_usa_rango(self):
         carreras = list(range(1, 12))
         assert tables._format_carreras_list(carreras, 11, "EXA") == "1-11"
+        assert tables._format_carreras_list(
+            carreras, 11, "EXA", unico_valor=True,
+        ) == "1-11 (all)"
 
     def test_tri_todas_carreras_usa_rango(self):
         carreras = list(range(1, 12))
         assert tables._format_carreras_list(carreras, 11, "TRI") == "1-11"
+        assert tables._format_carreras_list(
+            carreras, 11, "TRI", unico_valor=True,
+        ) == "1-11 (all)"
+
+    def test_exa_parcial_unico_agrega_all(self):
+        assert tables._format_carreras_list(
+            [1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 12], 13, "EXA", unico_valor=True,
+        ) == "1-3,5-12 (all)"
 
     def test_imp_todas_carreras_usa_rango(self):
         carreras = list(range(1, 12))
         assert tables._format_carreras_list(carreras, 11, "IMP") == "1-11"
+        assert tables._format_carreras_list(
+            carreras, 11, "IMP", unico_valor=True,
+        ) == "1-11"
 
     def test_cad_todas_carreras_lista_rango(self):
         carreras = list(range(1, 12))
@@ -72,8 +86,8 @@ class TestExportarResumenHtmlCarreras:
             html,
         )
 
-        assert ("1-11", "EXA") in filas_bases
-        assert ("1-11", "TRI") in filas_bases
+        assert ("1-11 (all)", "EXA") in filas_bases
+        assert ("1-11 (all)", "TRI") in filas_bases
         assert ("1-11", "CAD") in filas_bases
         assert ("1-11", "QTP") in filas_bases
         assert ("1-9", "DOB") in filas_bases
@@ -102,10 +116,32 @@ class TestExportarResumenHtmlCarreras:
             html,
         )
         assert ("6", "IMP") in filas_bases
-        assert ("1-11", "EXA") in filas_bases
+        assert ("1-11 (all)", "EXA") in filas_bases
         assert "08/08/2026" in html
         for carr, _cod in filas_bases:
             assert carr != "ALL"
+
+    def test_html_exa_dos_valores_sin_all(self, tmp_path: Path):
+        datos = _datos_reunion_11_carreras()
+        datos[11]["apuestas"]["EXA"] = 5000.0
+        pdf = tmp_path / "tela.pdf"
+        pdf.write_bytes(b"%PDF-1.4")
+        salida = tmp_path / "resumen.html"
+        info = {"reunion": "76", "fecha": "19/08/2026", "hipodromo": "Hipodromo de San Isidro"}
+        with patch(
+            "controlcomparador.ui.tables.extraer_info_reunion_tela",
+            return_value=info,
+        ):
+            tables.exportar_resumen_html(datos, pdf, salida)
+        html = salida.read_text(encoding="utf-8")
+        filas_bases = re.findall(
+            r"<tr><td>([^<]*)</td><td class=\"bet\">([^<]*)</td>",
+            html,
+        )
+        exa = [carr for carr, cod in filas_bases if cod == "EXA"]
+        assert exa
+        assert all("(all)" not in c for c in exa)
+        assert ("1-11 (all)", "TRI") in filas_bases
 
 
 def _datos_reunion_13_parcial():
@@ -152,6 +188,13 @@ class TestResumenBasesUnicas:
         html = salida.read_text(encoding="utf-8")
         assert "EXA: todas son de 2000" in html
         assert "TRI: todas son de 2000" in html
+        filas_bases = re.findall(
+            r"<tr><td>([^<]*)</td><td class=\"bet\">([^<]*)</td>",
+            html,
+        )
+        assert ("1-13 (all)", "EXA") in filas_bases
+        assert ("1-13 (all)", "TRI") in filas_bases
+        assert ("2", "CAD") in filas_bases
         assert "CAD: unica de 200" in html
         assert "QTP: todas son de 1000" in html
         assert "CAD: todas son de" not in html

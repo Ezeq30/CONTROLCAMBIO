@@ -99,11 +99,11 @@ pyinstaller ControlComparador.spec
 - Tabla SI izquierda: Ap. (PDF) | Ap.R (AVAILABLE POOLS) | Ofic | B.RSM. Extra en Ap.R = `[ERR]`.
 - Tabla SI derecha: RSM (solo RSM TABLE) | Ofic | B.RSM | Post. EXA/TRI ALL no en oficial = `extra` (cyan).
 - `imprimir_resumen_tela(datos, ruta)` — muestra archivo + BASES POR APUESTA + RESUMEN BASES ÚNICAS + VALIDACIONES + CONTROL DE PASES (Rich tables)
-- `exportar_resumen_html` / `exportar_comparacion_html` — **no** incluyen el panel VALIDACIONES (solo consola).
+- `exportar_resumen_html` — incluye panel VALIDACIONES (Carrera/Caballos/Observación) junto a bases. `exportar_comparacion_html` **no** incluye VALIDACIONES (solo consola).
 - `_validar_carreras_tela(datos)` — reglas TER/EXA/IMP/pares/picks. Última carrera: no exige EXA (≤11); IMP/CUA con <12 cab. son aviso azul.
 - `_agrupar_pases_por_secuencia(datos)` — analiza pases desde cada 1er.Pase, agrupa por código de apuesta, muestra start→end carreras y marca COMPLETA/INCOMPLETA
 - `_mostrar_validacion_pases(datos)` — tabla Rich por apuesta (TPL/QTN/QTP/CAD) mostrando secuencias de pases, carreras start→end, y estado COMPLETA (verde) / INCOMPLETA (amarillo con faltantes)
-- `_format_carreras_list(carreras, total)` — "ALL", "1-3,5,7-9"
+- `_format_carreras_list(carreras, total, cod, unico_valor=)` — rangos `"1-3,5-12"`; EXA/TRI con un solo valor → `"1-3,5-12 (all)"`
 
 ### Reglas de negocio importantes
 
@@ -114,7 +114,8 @@ pyinstaller ControlComparador.spec
 - **Extra EXA/TRI en posting:** si EXA/TRI están en B.RSM o posting por ALL y no en el oficial, la tabla derecha marca `extra` (aviso cyan) y no compara contra el oficial. Si Post vs B.RSM difiere, sí es error.
 - **Columna RSM (derecha):** solo códigos del bloque RSM TABLE. Un IMP agregado solo en AVAILABLE POOLS no aparece ahí.
 - **Última carrera:** no se exige EXA con ≤11 caballos. Con <12 caballos, IMP y/o CUA son aviso azul (no error). En el resto de carreras las reglas no cambian. Pares EXA+IMP / TRI+CUA siguen siendo error.
-- **HTML:** las validaciones se muestran en consola; no se exportan al HTML de comparación ni al resumen de tela.
+- **HTML:** el resumen de tela incluye VALIDACIONES (Carrera/Caballos/Observación). El HTML de comparación no las exporta (solo consola).
+- **Bases EXA/TRI un valor:** en BASES POR APUESTA, si EXA o TRI tienen un solo monto en la reunión, Carreras muestra el rango y ` (all)` (ej. `1-3,5-12 (all)`). No reemplaza el rango por ALL.
 - **San Isidro:** GAN, SEG, TER solo se comparan en existencia, no en valor
 - **Palermo:** Si EXA/TRI aparece UNA sola vez en el PDF, se expande a todas las carreras (regla "ALL si única línea")
 - **Posting:** El segundo archivo TXT sobrescribe al primero en caso de conflicto

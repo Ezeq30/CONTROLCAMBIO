@@ -1584,8 +1584,17 @@ def _html_validaciones_tela(resultados: dict[int, tuple[int, list[HallazgoTela]]
     return _html_panel_validaciones(resultados) + _html_panel_reglas()
 
 
-def _format_carreras_list(carreras: list[int], total: int = 0, cod: str | None = None) -> str:
-    """Formatea lista de carreras como rangos (1-11, 1-9,10). Sin etiqueta ALL."""
+def _format_carreras_list(
+    carreras: list[int],
+    total: int = 0,
+    cod: str | None = None,
+    *,
+    unico_valor: bool = False,
+) -> str:
+    """Formatea lista de carreras como rangos (1-11, 1-3,5-12).
+
+    EXA/TRI con un solo valor en la reunión: ``1-3,5-12 (all)`` (no reemplaza el rango).
+    """
     if not carreras:
         return ""
     carreras = sorted(carreras)
@@ -1600,7 +1609,10 @@ def _format_carreras_list(carreras: list[int], total: int = 0, cod: str | None =
             start = c
             end = c
     ranges.append(f"{start}" if start == end else f"{start}-{end}")
-    return ",".join(ranges)
+    texto = ",".join(ranges)
+    if unico_valor and cod in APUESTAS_EXTRA_AVISO:
+        return f"{texto} (all)"
+    return texto
 
 
 def _agrupar_bases_por_apuesta(datos: dict[int, dict]) -> dict[tuple[str, float | None], list[int]]:
@@ -1614,6 +1626,14 @@ def _agrupar_bases_por_apuesta(datos: dict[int, dict]) -> dict[tuple[str, float 
     return grupos
 
 
+def _codigos_con_valor_unico(grupos: dict[tuple[str, float | None], list[int]]) -> set[str]:
+    """Códigos que aparecen con un solo monto en toda la reunión."""
+    valores: dict[str, set[float | None]] = defaultdict(set)
+    for (cod, val) in grupos:
+        valores[cod].add(val)
+    return {cod for cod, vals in valores.items() if len(vals) == 1}
+
+
 def _texto_resumen_base_unica(carreras: list[int], cod: str, val: float) -> str:
     """Un solo valor base en la reunión: 'unica' si es 1 carrera, 'todas' si son 2+."""
     if len(carreras) > 1:
@@ -1624,6 +1644,7 @@ def _texto_resumen_base_unica(carreras: list[int], cod: str, val: float) -> str:
 def _mostrar_bases_por_apuesta(datos: dict[int, dict]) -> None:
     grupos = _agrupar_bases_por_apuesta(datos)
     total = len(datos)
+    unicos = _codigos_con_valor_unico(grupos)
     codes = _ordenar_codigos({cod for cod, _ in grupos.keys()})
 
     ordered: list[tuple[tuple[str, float | None], list[int]]] = []
@@ -1635,12 +1656,17 @@ def _mostrar_bases_por_apuesta(datos: dict[int, dict]) -> None:
 
     t = Table(box=box.SIMPLE, header_style="bold", title="[bold]BASES POR APUESTA[/bold]")
     t.add_column("#", justify="right", width=3, style="dim")
-    t.add_column("Carreras", width=16)
+    t.add_column("Carreras", width=22)
     t.add_column("Apuesta", style="cyan", width=8)
     t.add_column("Base", justify="right", width=10)
 
     for idx, ((cod, val), carreras) in enumerate(ordered, 1):
-        t.add_row(str(idx), _format_carreras_list(carreras, total, cod), cod, formato_valor(val))
+        t.add_row(
+            str(idx),
+            _format_carreras_list(carreras, total, cod, unico_valor=cod in unicos),
+            cod,
+            formato_valor(val),
+        )
 
     console.print(t)
     console.print()
@@ -1809,6 +1835,7 @@ def exportar_resumen_html(datos: dict[int, dict], ruta_pdf: str | Path, ruta_sal
     info = extraer_info_reunion_tela(ruta_pdf)
     grupos = _agrupar_bases_por_apuesta(datos)
     total = len(datos)
+    unicos = _codigos_con_valor_unico(grupos)
     codes = _ordenar_codigos({cod for cod, _ in grupos.keys()})
 
     filas: list[tuple[str, str, str]] = []
@@ -1816,7 +1843,9 @@ def exportar_resumen_html(datos: dict[int, dict], ruta_pdf: str | Path, ruta_sal
         entries = [(v, carreras) for (c, v), carreras in grupos.items() if c == cod]
         entries.sort(key=lambda x: (0, x[0]) if x[0] is not None else (1, 0))
         for val, carreras in entries:
-            carrera_str = _format_carreras_list(carreras, total, cod)
+            carrera_str = _format_carreras_list(
+                carreras, total, cod, unico_valor=cod in unicos,
+            )
             filas.append((carrera_str, cod, formato_valor(val)))
 
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -1876,13 +1905,13 @@ def exportar_resumen_html(datos: dict[int, dict], ruta_pdf: str | Path, ruta_sal
   }}
   .top-row {{
     display: grid;
-    grid-template-columns: 1fr;
+    grid-template-columns: 1fr 1fr;
     align-items: start;
     border-bottom: 1px solid #c8e6c9;
   }}
   .section-bases {{
-    width: 100%;
     min-width: 0;
+    border-right: 1px solid #e0e0e0;
   }}
   .bases-wrap {{
     width: 100%;
@@ -2027,8 +2056,9 @@ def exportar_resumen_html(datos: dict[int, dict], ruta_pdf: str | Path, ruta_sal
 </table>
 </div>
 </div>
-</div>
 """
+    html += _html_panel_validaciones(_validar_carreras_tela(datos))
+    html += "</div>\n"
 
     # --- Resumen de bases únicas ---
     from collections import defaultdict
