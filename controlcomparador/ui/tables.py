@@ -1906,12 +1906,24 @@ def exportar_resumen_html(datos: dict[int, dict], ruta_pdf: str | Path, ruta_sal
   .top-row {{
     display: grid;
     grid-template-columns: 1fr 1fr;
-    align-items: start;
+    /* VALIDACIONES se estira al mismo alto que Bases (evita hueco blanco). */
+    align-items: stretch;
     border-bottom: 1px solid #c8e6c9;
   }}
   .section-bases {{
     min-width: 0;
     border-right: 1px solid #e0e0e0;
+    display: flex;
+    flex-direction: column;
+    background: #fafdf9;
+  }}
+  .top-row .panel-validaciones {{
+    height: 100%;
+    min-height: 100%;
+  }}
+  .top-row .validaciones-table {{
+    flex: 1;
+    height: 100%;
   }}
   .bases-wrap {{
     width: 100%;

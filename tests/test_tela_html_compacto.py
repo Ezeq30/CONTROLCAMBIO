@@ -77,6 +77,8 @@ class TestExportarResumenHtmlCompacto:
         assert "width: 5em" in html
         assert "width: 5.5em" in html
         assert "grid-template-columns: 1fr 1fr" in html
+        assert "align-items: stretch" in html
+        assert ".top-row .panel-validaciones" in html
 
     def test_pases_tabla_minima_una_sola(self, tmp_path: Path):
         html = self._exportar(_datos_reunion_64_pases(), tmp_path)
