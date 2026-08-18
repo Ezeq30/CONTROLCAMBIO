@@ -3,8 +3,8 @@
 
 ``escribir_salida_fija`` escribe directo con WriteConsoleW para que Rich no
 reformatee líneas ya calculadas (evita huecos cuando la consola es más ancha
-que el contenido). ``ampliar_consola_windows`` ajusta el buffer al ancho exacto
-de las dos tablas pegadas antes de imprimir.
+que el contenido). ``ampliar_consola_windows`` agranda el buffer de ancho si
+hace falta; no pisa el alto ni desmaximiza la ventana.
 """
 
 from rich.console import Console
@@ -42,7 +42,7 @@ def actualizar_ancho_consola() -> int:
 
 
 def ampliar_consola_windows(cols: int) -> None:
-    """Amplía ventana/buffer de consola al ancho pedido (vista par posting)."""
+    """Asegura buffer de consola >= ``cols`` de ancho. No cambia el alto."""
     import sys
 
     if sys.platform != "win32" or cols < 1:
@@ -64,12 +64,27 @@ def ampliar_consola_windows(cols: int) -> None:
                 ("Bottom", ctypes.c_short),
             ]
 
-        kernel32.SetConsoleScreenBufferSize(handle, COORD(cols, 9001))
-        rect = SMALL_RECT(0, 0, cols - 1, 49)
-        kernel32.SetConsoleWindowInfo(handle, True, ctypes.byref(rect))
+        class CONSOLE_SCREEN_BUFFER_INFO(ctypes.Structure):
+            _fields_ = [
+                ("dwSize", COORD),
+                ("dwCursorPosition", COORD),
+                ("wAttributes", ctypes.c_ushort),
+                ("srWindow", SMALL_RECT),
+                ("dwMaximumWindowSize", COORD),
+            ]
+
+        info = CONSOLE_SCREEN_BUFFER_INFO()
+        if kernel32.GetConsoleScreenBufferInfo(handle, ctypes.byref(info)):
+            cur_x = info.dwSize.X
+            cur_y = max(info.dwSize.Y, 1)
+            if cur_x < cols:
+                kernel32.SetConsoleScreenBufferSize(handle, COORD(cols, cur_y))
         console.width = cols
     except Exception:
-        pass
+        try:
+            console.width = cols
+        except Exception:
+            pass
 
 
 def escribir_salida_fija(texto: str) -> None:

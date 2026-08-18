@@ -95,12 +95,16 @@ def _imprimir_bloque_comparacion_desde_bloque(bloque: BloqueComparacion) -> None
 
 
 def _capturar_lineas_segmentos(renderable, width: int) -> list[list[Segment]]:
-    """Renderiza un Rich renderable a líneas de Segmentos con ancho forzado."""
+    """Renderiza un Rich renderable a líneas de Segmentos con ancho forzado.
+
+    ``height=None`` y ``pad=False`` evitan que una consola maximizada infle
+    la tabla (filas vacías con ``|`` y columnas estiradas).
+    """
     ancho_prev = console.width
     console.width = width
     try:
-        options = console.options.update(width=width, max_width=width)
-        return console.render_lines(renderable, options)
+        options = console.options.update(width=width, max_width=width, height=None)
+        return console.render_lines(renderable, options, pad=False)
     finally:
         console.width = ancho_prev
 
@@ -393,11 +397,11 @@ def _nombre_fuente_corto(etiq: str) -> str:
 def _header_columna_fuente(etiq: str, *, par: bool = False, compacto: bool = False) -> str:
     u = (etiq or "OFICIAL").strip().upper()
     if "TELA" in u and "OFICIAL" in u:
-        return "Tela Oficial"
+        return "Tela" if par else "Tela Oficial"
     if "TELA" in u:
         return "Tela"
     if u == "OFICIAL":
-        return "Oficial"
+        return "Ofic" if par else "Oficial"
     if "PALERMO" in u or "BASES" in u:
         return "Bases"
     if "PLANILLA" in u:
@@ -418,6 +422,7 @@ def _header_columna_reporte(*, par: bool = False, bases_rsm: bool = False) -> st
 def _kwargs_col_fuente(etiq: str, *, compacto: bool = False, par: bool = False) -> tuple[str, dict]:
     nombre = _header_columna_fuente(etiq, par=par, compacto=compacto)
     wv = _ancho_valor(compacto=compacto, par=par)
+    # Headers par Tela/Ofic (≤4) no inflan; Planilla (8) sí necesita el header.
     ancho = max(wv, len(nombre))
     return nombre, {"justify": "right", "width": ancho, "min_width": wv, "no_wrap": True}
 
@@ -2238,6 +2243,7 @@ def mostrar_resumen_validaciones_tela(
             title=f"{SYM_FAIL} VALIDACIONES",
             border_style="red",
             style="warn",
+            expand=False,
         ))
         console.print()
     elif not avisos:
@@ -2246,6 +2252,7 @@ def mostrar_resumen_validaciones_tela(
             title="VALIDACIONES",
             border_style="#2e7d32",
             style="ok",
+            expand=False,
         ))
         console.print()
     if avisos:
@@ -2262,6 +2269,7 @@ def mostrar_resumen_avisos(avisos: list[str], titulo: str = "AVISOS") -> None:
         title=titulo,
         border_style="cyan",
         style="dim",
+        expand=False,
     ))
     console.print()
 

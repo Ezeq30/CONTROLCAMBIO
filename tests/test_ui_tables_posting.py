@@ -21,7 +21,7 @@ def _assert_salida_par_compacta(salida: str, *, min_lineas: int = 5) -> int:
     lineas = salida.splitlines()
     assert len(lineas) >= min_lineas
     ancho = max(len(l) for l in lineas)
-    assert ancho <= 145
+    assert ancho <= 130
     return ancho
 
 
@@ -31,7 +31,7 @@ def test_perfil_columnas_con_posting():
     )
     nombres = [c[0] for c in cols]
     assert nombres == [
-        "Carr.", "Cab.", "Ap.", "Tela Oficial", "Rep.", "Post.", "Estado",
+        "Carr.", "Cab.", "Ap.", "Tela", "Rep.", "Post.", "Estado",
     ]
 
 
@@ -51,7 +51,7 @@ def test_perfil_columnas_con_ap_rep():
     )
     nombres = [c[0] for c in cols]
     assert nombres == [
-        "Carr.", "Cab.", "Ap.", "Ap.R", "Oficial", "Rep.", "Estado",
+        "Carr.", "Cab.", "Ap.", "Ap.R", "Ofic", "Rep.", "Estado",
     ]
 
 
@@ -62,7 +62,7 @@ def test_perfil_columnas_si_bases_rsm():
     )
     nombres = [c[0] for c in cols]
     assert nombres == [
-        "Carr.", "Cab.", "Ap.", "Ap.R", "Oficial", "B.RSM", "Estado",
+        "Carr.", "Cab.", "Ap.", "Ap.R", "Ofic", "B.RSM", "Estado",
     ]
     assert tables._header_columna_reporte(par=False, bases_rsm=True) == "BASES RSM TABLE"
 
@@ -82,7 +82,10 @@ def test_caballos_celda_roja_si_difieren():
 
 
 def test_headers_completos_par():
-    assert tables._header_columna_fuente("TELA OFICIAL", par=True) == "Tela Oficial"
+    assert tables._header_columna_fuente("TELA OFICIAL", par=True) == "Tela"
+    assert tables._header_columna_fuente("TELA OFICIAL", par=False) == "Tela Oficial"
+    assert tables._header_columna_fuente("OFICIAL", par=True) == "Ofic"
+    assert tables._header_columna_fuente("OFICIAL", par=False) == "Oficial"
     assert tables._header_columna_reporte(par=True) == "Rep."
     assert tables._header_columna_reporte(par=True, bases_rsm=True) == "B.RSM"
     assert tables._header_columna_rsm(par=True) == "RSM"
@@ -92,6 +95,15 @@ def test_headers_completos_par():
 
 def test_ancho_valor_par():
     assert tables._ancho_valor(par=True) == 6
+    nombre, kw = tables._kwargs_col_fuente("TELA OFICIAL", par=True)
+    assert nombre == "Tela"
+    assert kw["width"] == 6
+    nombre, kw = tables._kwargs_col_fuente("OFICIAL", par=True)
+    assert nombre == "Ofic"
+    assert kw["width"] == 6
+    nombre, kw = tables._kwargs_col_fuente("Planilla", par=True)
+    assert nombre == "Planilla"
+    assert kw["width"] == len("Planilla")
 
 
 def test_tabla_par_usa_rounded():
@@ -248,7 +260,7 @@ def test_imprimir_par_san_isidro_tela_12_carreras_compacto():
         lambda: tables.imprimir_par_comparacion(bloque_izq, bloque_der)
     )
     ancho = _assert_salida_par_compacta(salida, min_lineas=40)
-    assert ancho <= 145
+    assert ancho <= 130
     assert "\u2026" not in salida
     assert "TELA OFICIAL vs Reporte" in salida
     assert "│  12  " in salida or "│ 12   " in salida or " 12 " in salida
@@ -300,6 +312,50 @@ def test_par_no_expande_con_consola_ancha():
     assert ancho <= 130
     assert "\u2026" not in salida
     assert "│ EXA " in salida or "│ EXA │" in salida or " EXA " in salida
+
+
+def test_par_no_expande_con_consola_alta():
+    """Ventana maximizada (height alto) no debe agregar filas vacías."""
+    datos_pdf = {
+        i: {"caballos": 10, "apuestas": {"GAN": None, "EXA": 2000.0, "TRI": 2000.0}}
+        for i in range(1, 13)
+    }
+    datos_rep_meta = dict(datos_pdf)
+    datos_rep_flat = {i: d["apuestas"] for i, d in datos_pdf.items()}
+    posting = ({i: d["apuestas"] for i, d in datos_pdf.items()}, set())
+    bloque_izq = tables.imprimir_tabla_san_isidro(
+        datos_pdf, datos_rep_meta, posting,
+        tipo_pdf="TELA OFICIAL", imprimir=False, compacto=True, par=True,
+    )
+    bloque_der = tables.imprimir_tabla_posting_vs_reporte(
+        posting, (datos_rep_flat, set()),
+        datos_fuente=datos_pdf, datos_reporte_meta=datos_rep_meta,
+        label_fuente="TELA OFICIAL", imprimir=False, compacto=True, par=True,
+    )
+    alto_prev = console.height
+    ancho_prev = console.width
+    try:
+        console.width = 200
+        console.height = 24
+        salida_baja = _capturar_salida_par(
+            lambda: tables.imprimir_par_comparacion(bloque_izq, bloque_der)
+        )
+        console.height = 80
+        salida_alta = _capturar_salida_par(
+            lambda: tables.imprimir_par_comparacion(bloque_izq, bloque_der)
+        )
+    finally:
+        console.height = alto_prev
+        console.width = ancho_prev
+    n_baja = len(salida_baja.splitlines())
+    n_alta = len(salida_alta.splitlines())
+    assert n_alta == n_baja, f"height infló filas: {n_baja} → {n_alta}"
+    ancho = _assert_salida_par_compacta(salida_alta, min_lineas=40)
+    assert ancho <= 130
+    assert "Tela" in salida_alta
+    cols_izq = [c.header for c in bloque_izq.tabla.columns]
+    assert "Tela Oficial" not in cols_izq
+    assert "Tela" in cols_izq
 
 
 def test_imprimir_par_laplata_sin_gan_y_sin_post_izq():
