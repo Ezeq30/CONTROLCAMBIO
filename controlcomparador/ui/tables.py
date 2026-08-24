@@ -1112,7 +1112,8 @@ def imprimir_tabla_laplata(
         plan = datos_planilla.get(num_carrera, {})
         rep = datos_reporte.get(num_carrera, {})
         ap_plan = plan.get("apuestas", {}) if plan else {}
-        ap_rep = rep.get("apuestas", {}) if rep else {}
+        pools_rep = pools_de_carrera(rep) if rep else {}
+        bases_rep = bases_de_carrera(rep) if rep else {}
         pos_ap = valores_posting.get(num_carrera, {})
         c_plan = plan.get("caballos", "?") if plan else "?"
         c_rep = rep.get("caballos", "?") if rep else "?"
@@ -1120,22 +1121,23 @@ def imprimir_tabla_laplata(
         cab_rich = _caballos_celda_rich(c_plan, c_rep)
 
         if par:
-            todos_codigos = _codigos_carrera_par_laplata(ap_plan, ap_rep, pos_ap)
+            todos_codigos = _codigos_carrera_par_laplata(ap_plan, pools_rep, pos_ap)
         else:
-            todos_codigos = _ordenar_codigos(set(ap_plan.keys()) | set(ap_rep.keys()))
+            todos_codigos = _ordenar_codigos(set(ap_plan.keys()) | set(pools_rep.keys()))
         for idx, cod in enumerate(todos_codigos):
             v_plan = ap_plan.get(cod) if cod in ap_plan else None
-            v_rep = ap_rep.get(cod) if cod in ap_rep else None
+            v_rep = bases_rep.get(cod) if cod in bases_rep else None
             v_pos = pos_ap.get(cod) if incluir_posting_col and cod in pos_ap else None
+            en_rep = cod in pools_rep
             if incluir_posting_col:
                 estado = _estado_tres_fuentes(
                     v_plan, v_rep, v_pos, "Planilla", codigo=cod,
-                    en_pdf=cod in ap_plan, en_rep=cod in ap_rep, en_pos=cod in pos_ap,
+                    en_pdf=cod in ap_plan, en_rep=en_rep, en_pos=cod in pos_ap,
                 )
             else:
                 estado = _estado_apuesta(
                     v_plan, v_rep, "Planilla", "reporte",
-                    en1=cod in ap_plan, en2=cod in ap_rep, codigo=cod,
+                    en1=cod in ap_plan, en2=en_rep, codigo=cod,
                 )
             num_errores, num_avisos = _contar_fila_estado(estado, num_errores, num_avisos)
 

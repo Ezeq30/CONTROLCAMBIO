@@ -109,6 +109,7 @@ pyinstaller ControlComparador.spec
 
 - **Tela Oficial San Isidro**: anclaje por `APUESTAS:` (no `Premio`). Las líneas después de "Bolsa Total:" y antes del número de carrera son "extra bets" (pases). Se filtran con `es_apuesta_excluida()`. GAN/SEG/TER se extraen como presencia (None), no como valor.
 - **La Plata:** CUATERNA = QTN, CUATRIFECTA = CUA (al revés que otros hipódromos)
+- **La Plata — tabla planilla vs reporte:** igual que el comparador, la columna Rep. lee montos de `bases` (RSM TABLE); la presencia en reporte usa `apuestas` (AVAILABLE POOLS). La tabla posting (derecha) ya usaba `bases`; la izquierda quedó alineada en v2.0.64.
 - **San Isidro — dos fuentes del reporte:** `apuestas` = AVAILABLE POOLS (columna Ap.R, presencia). `bases` = RSM TABLE (columnas B.RSM / RSM, montos). Cada columna lee solo su fuente.
 - **Extra en Ap.R:** cualquier código en AVAILABLE POOLS que no esté en el oficial es error (`está de más en el reporte, no está en el oficial`), incluido IMP/EXA/TRI.
 - **Extra EXA/TRI en posting:** si EXA/TRI están en B.RSM o posting por ALL y no en el oficial, la tabla derecha marca `extra` (aviso cyan) y no compara contra el oficial. Si Post vs B.RSM difiere, sí es error.
