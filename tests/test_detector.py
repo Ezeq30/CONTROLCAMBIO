@@ -43,6 +43,24 @@ class TestClasificarPdf:
         assert _clasificar_pdf(Path("dummy.pdf")) == "san_isidro"
 
     @patch("pypdf.PdfReader")
+    def test_san_isidro_por_programa_oficial_reporte(self, mock_reader):
+        mock_page = MagicMock()
+        mock_page.extract_text.return_value = (
+            "HIPÓDROMO DE SAN ISIDRO\nPROGRAMA OFICIAL\nReunión N° 85\n1a PREMIO EJEMPLO"
+        )
+        mock_instance = MagicMock()
+        mock_instance.pages = [mock_page]
+        mock_reader.return_value = mock_instance
+        assert _clasificar_pdf(Path("dummy.pdf")) == "san_isidro"
+
+    def test_san_isidro_fixture_tela_reporte_oficial(self):
+        ruta = FIXTURES_DIR / "tela_reporte_programa_oficial_si.pdf"
+        if not ruta.exists():
+            import pytest
+            pytest.skip("fixture tela reporte ausente")
+        assert _clasificar_pdf(ruta) == "san_isidro"
+
+    @patch("pypdf.PdfReader")
     def test_palermo_bases_por_fila_palermo(self, mock_reader):
         mock_page = MagicMock()
         mock_page.extract_text.return_value = "EXACTA ($ 500.00) 1-3\nTRIFECTA ($ 1200.00) 1-3"

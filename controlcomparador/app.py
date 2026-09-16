@@ -649,7 +649,16 @@ def menu():
                 deteccion = detectar_archivos(ruta_p)
             disponibles = hipodromos_detectados(deteccion)
             if not disponibles:
-                console.print("[yellow]No se detectaron archivos suficientes.[/yellow]")
+                console.print("[yellow]No se detectaron archivos suficientes para ningun hipodromo.[/yellow]")
+                resumen = resumen_deteccion(deteccion)
+                if resumen:
+                    for hipodromo, archivos in resumen.items():
+                        console.print(f"  {hipodromo}: {', '.join(archivos)}")
+                else:
+                    console.print("  (ningun PDF/TXT/XLS reconocido en la carpeta)")
+                console.print(
+                    "[yellow]Se necesita al menos 1 PDF + 1 TXT (reporte) o 1 XLS + 1 TXT.[/yellow]"
+                )
                 Prompt.ask("[dim]Enter para continuar...[/dim]", default="")
                 continue
             if len(disponibles) == 1:

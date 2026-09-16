@@ -8,6 +8,7 @@ from controlcomparador.config import (
     PATRON_FILA_PALERMO,
     PATRON_APUESTAS_A,
     PATRON_PROGRAMA_DEPURADO,
+    PATRON_PROGRAMA_OFICIAL_REPORTE,
 )
 
 
@@ -28,8 +29,9 @@ def _clasificar_pdf(ruta: Path) -> Optional[str]:
     tiene_apuestas_a = bool(PATRON_APUESTAS_A.search(texto))
     tiene_carrera_pdf = bool(PATRON_CARRERA_PDF.search(texto))
     tiene_programa_depurado = bool(PATRON_PROGRAMA_DEPURADO.search(texto))
+    tiene_programa_oficial = bool(PATRON_PROGRAMA_OFICIAL_REPORTE.search(texto))
 
-    if tiene_carrera_pdf or tiene_programa_depurado:
+    if tiene_carrera_pdf or tiene_programa_depurado or tiene_programa_oficial:
         return "san_isidro"
     if tiene_fila_palermo:
         return "palermo_bases"

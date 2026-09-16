@@ -89,7 +89,7 @@ pyinstaller ControlComparador.spec
 - `PATRON_CARRERA_TELA_REPORTE` — headers `1a PREMIO` / `8a CLÁSICO` del formato nuevo
 
 #### detector.py
-- `_clasificar_pdf(ruta)` — detecta "Programa Depurado" → `"san_isidro"` (tela oficial usa mismo comparador)
+- `_clasificar_pdf(ruta)` — detecta `PATRON_CARRERA_PDF`, "Programa Depurado" o `PROGRAMA OFICIAL` → `"san_isidro"` (ambos formatos de tela)
 
 #### agent.py
 - `comparar_san_isidro()` — retorna `tipo_pdf` vía `tipo_tela_oficial()` (`TELA DEPURADA` / `TELA PROGRAMA OFICIAL`) o `"OFICIAL"`
