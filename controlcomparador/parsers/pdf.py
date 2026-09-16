@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from statistics import median
 from typing import Optional
 
 import re
@@ -21,6 +22,12 @@ from controlcomparador.config import (
     PATRON_FILA_PALERMO,
     PATRON_APUESTAS_A,
     PATRON_CARRERA_OFICIAL,
+    PATRON_CARRERA_TELA_REPORTE,
+    PATRON_DORSAL_TELA_REPORTE,
+    PATRON_HEADER_STUD_TELA_REPORTE,
+    PATRON_PROGRAMA_DEPURADO,
+    PATRON_PROGRAMA_OFICIAL_REPORTE,
+    PATRON_REUNION_TELA_REPORTE,
     MAPEO_ABREVIATURAS,
     CODIGOS_APUESTA_VALIDOS,
     APUESTAS_SIN_COMPARAR_VALOR,
@@ -31,8 +38,15 @@ from controlcomparador.utils.money import parsear_monto_str
 def es_apuesta_excluida(nombre: str) -> bool:
     if not nombre:
         return False
-    if nombre.strip().lower().startswith("doble"):
-        return False
+    low = nombre.strip().lower()
+    # Doble sin pase (tela vieja "Doble $2000") se incluye.
+    # Doble con pase distinto de 1er/1° (REPORTE PROGRAMA OFICIAL) se excluye.
+    if low.startswith("doble"):
+        if "pase" not in low and not PATRON_ULTIMO_PASE.search(nombre):
+            return False
+        if PATRON_PRIMER_PASE.search(nombre):
+            return False
+        return True
     if PATRON_EXCLUIR_PASE_SIN_FINAL.search(nombre):
         return True
     m_pase = PATRON_PASE_TELA.search(nombre)
@@ -65,6 +79,9 @@ def abreviar_apuesta(nombre: str) -> str:
     clave = nombre.lower()
     if clave in MAPEO_ABREVIATURAS:
         return MAPEO_ABREVIATURAS[clave]
+    # Imperfecta / Imperfecta extra / Imperfecta(Extra) → IMP
+    if "imperfecta" in clave:
+        return "IMP"
     return MAPEO_ABREVIATURAS.get(clave.split()[0], nombre)
 
 
@@ -183,17 +200,51 @@ PATRON_EXTRA_BETS = re.compile(
 PATRON_CABALLO_TELA = re.compile(r"\s+(\d+)\s{2,}(?:[A-Z]|')")
 
 
-def es_tela_oficial(ruta_pdf: str | Path) -> bool:
-    """Detecta si un PDF es de formato 'Tela Oficial' (Programa Depurado)."""
+def es_tela_depurada(ruta_pdf: str | Path) -> bool:
+    """Tela vieja: 'Programa Depurado' en la primera página."""
     import pypdf
     try:
         reader = pypdf.PdfReader(ruta_pdf)
         if not reader.pages:
             return False
-        texto = (reader.pages[0].extract_text() or "")
-        return "Programa Depurado" in texto
+        texto = reader.pages[0].extract_text() or ""
+        return bool(PATRON_PROGRAMA_DEPURADO.search(texto))
     except Exception:
         return False
+
+
+def es_tela_reporte_oficial(ruta_pdf: str | Path) -> bool:
+    """Tela nueva: REPORTE PROGRAMA OFICIAL con headers 'Na PREMIO/CLÁSICO'."""
+    import pypdf
+    try:
+        reader = pypdf.PdfReader(ruta_pdf)
+        if not reader.pages:
+            return False
+        # No confundir con Programa Depurado (también puede decir "oficial" en el cuerpo).
+        if PATRON_PROGRAMA_DEPURADO.search(reader.pages[0].extract_text() or ""):
+            return False
+        muestra = ""
+        for p in reader.pages[:4]:
+            muestra += (p.extract_text() or "") + "\n"
+        if not PATRON_PROGRAMA_OFICIAL_REPORTE.search(muestra):
+            return False
+        return bool(PATRON_CARRERA_TELA_REPORTE.search(muestra))
+    except Exception:
+        return False
+
+
+def es_tela_oficial(ruta_pdf: str | Path) -> bool:
+    """True si es tela depurada o REPORTE PROGRAMA OFICIAL (ambas para resumen)."""
+    return es_tela_depurada(ruta_pdf) or es_tela_reporte_oficial(ruta_pdf)
+
+
+def tipo_tela_oficial(ruta_pdf: str | Path) -> str | None:
+    """Etiqueta de formato: TELA DEPURADA | TELA PROGRAMA OFICIAL | None."""
+    if es_tela_depurada(ruta_pdf):
+        return "TELA DEPURADA"
+    if es_tela_reporte_oficial(ruta_pdf):
+        return "TELA PROGRAMA OFICIAL"
+    return None
 
 
 def _parsear_bets_tela(texto: str) -> list[tuple[str, str]]:
@@ -362,6 +413,682 @@ def _obtener_apuestas_tela_oficial(ruta_pdf: str | Path) -> list[list]:
     return resultado
 
 
+_PATRON_LINEA_BET_REPORTE = re.compile(
+    r"^(Ganador|Segundo|Tercero|Exacta|Trifecta|"
+    r"Imperfecta(?:\s*\(?\s*extra\s*\)?)?"
+    r"|Cuatrifecta|Doble|Triplo|Cuaterna|Quintuplo|Cadena)\b(.*)$",
+    re.IGNORECASE,
+)
+
+
+def _secuencia_caballos_valida(nums: set[int]) -> bool:
+    """Ignora restos de encoding (p. ej. solo {1}) que no son una lista real."""
+    if not nums:
+        return False
+    return max(nums) >= 4 or len(nums) >= 3
+
+
+def _es_header_stud_tela(linea: str) -> bool:
+    """True solo para encabezado de grilla, no para 'STUD GRR' / 'STUD ALDEA STA'."""
+    return bool(PATRON_HEADER_STUD_TELA_REPORTE.search(linea.strip()))
+
+
+def _mejor_conjunto_dorsales(
+    actual: set[int] | None, candidato: set[int] | None
+) -> set[int] | None:
+    """Prefiere el conjunto con mayor dorsal máximo (lista más completa)."""
+    if not candidato or not _secuencia_caballos_valida(candidato):
+        return set(actual) if actual else None
+    if not actual or not _secuencia_caballos_valida(actual):
+        return set(candidato)
+    if max(candidato) > max(actual):
+        return set(candidato)
+    if max(candidato) == max(actual) and len(candidato) > len(actual):
+        return set(candidato)
+    return set(actual)
+
+
+def _principal_y_pending_secuencias(
+    seqs: list[set[int]],
+) -> tuple[set[int], set[int] | None]:
+    """Elige la lista principal (mayor dorsal) y pending si hay overflow real."""
+    if not seqs:
+        return set(), None
+    if len(seqs) == 1:
+        return set(seqs[0]), None
+    ordenadas = sorted(seqs, key=lambda s: (max(s), len(s)), reverse=True)
+    principal = set(ordenadas[0])
+    pending: set[int] | None = None
+    for extra in ordenadas[1:]:
+        # Suplentes u otro bloque chico con max <= principal: no es overflow de otra carrera
+        if max(extra) >= max(principal) or (1 in extra and max(extra) >= 8):
+            pending = _mejor_conjunto_dorsales(pending, extra)
+    return principal, pending
+
+
+def _secuencias_dorsales(lineas: list[str]) -> list[set[int]]:
+    """Agrupa dorsales; nuevo bloque con 01 o tras header STUD/CHAQUETILLAS/SUPLENTES."""
+    sequences: list[set[int]] = []
+    current: set[int] = set()
+
+    def _flush() -> None:
+        nonlocal current
+        if current:
+            sequences.append(current)
+            current = set()
+
+    for l in lineas:
+        s = l.strip()
+        su = s.upper()
+        if "CHAQUETILLAS" in su or su == "SUPLENTES" or _es_header_stud_tela(s):
+            _flush()
+            continue
+        if PATRON_CARRERA_TELA_REPORTE.match(s) or su == "APUESTAS" or su.startswith("APUESTAS"):
+            _flush()
+            continue
+        found = [
+            int(m.group(1))
+            for m in PATRON_DORSAL_TELA_REPORTE.finditer(s)
+            if 1 <= int(m.group(1)) <= 24
+        ]
+        for num in found:
+            if num == 1 and current and max(current) > 1:
+                _flush()
+                current = {1}
+            else:
+                current.add(num)
+    _flush()
+    return [s for s in sequences if _secuencia_caballos_valida(s)]
+
+
+def _dorsales_en_race_lines(race_lines: list[str]) -> tuple[set[int], set[int] | None]:
+    """Dorsales dentro del segmento de carrera (tras APUESTAS / antes o después de STUD).
+
+    pypdf a menudo pone los caballos *después* del bloque APUESTAS y *antes* de STUD,
+    o mezcla dos listas (esta carrera + la siguiente).
+    """
+    seqs = _secuencias_dorsales(race_lines)
+    if not seqs:
+        return set(), None
+    if len(seqs) == 1:
+        return set(seqs[0]), None
+    return set(seqs[0]), set(seqs[1])
+
+
+def _dorsales_post_stud(race_lines: list[str]) -> tuple[set[int], set[int] | None]:
+    """Tras header STUD de grilla: primer bloque de dorsales y pending (siguiente 01…)."""
+    after_stud = False
+    primero: set[int] = set()
+    segundo: set[int] = set()
+    fase = 0  # 0=buscar, 1=primero, 2=segundo
+    for l in race_lines:
+        s = l.strip()
+        su = s.upper()
+        if _es_header_stud_tela(s):
+            after_stud = True
+            continue
+        if not after_stud:
+            continue
+        if PATRON_CARRERA_TELA_REPORTE.match(s):
+            break
+        if "CHAQUETILLAS" in su or su == "SUPLENTES":
+            if fase == 1 and primero:
+                fase = 2
+            continue
+        for m in PATRON_DORSAL_TELA_REPORTE.finditer(s):
+            num = int(m.group(1))
+            if not (1 <= num <= 24):
+                continue
+            if fase == 0:
+                fase = 1
+                primero.add(num)
+            elif fase == 1:
+                if num == 1 and primero and max(primero) > 1:
+                    fase = 2
+                    segundo = {1}
+                else:
+                    primero.add(num)
+            else:
+                if num == 1 and segundo and max(segundo) > 1:
+                    break
+                segundo.add(num)
+    p1 = primero if _secuencia_caballos_valida(primero) else set()
+    p2 = segundo if _secuencia_caballos_valida(segundo) else None
+    return p1, p2
+
+
+def _contar_caballos_tela_reporte(
+    prev_lines: list[str],
+    race_lines: list[str],
+    pending: set[int] | None,
+    next_lines: list[str] | None = None,
+    skip_first_seq: bool = False,
+    prev_preheader: bool = False,
+) -> tuple[int, set[int] | None, bool]:
+    """Caballos de la carrera + pending + si se consumió el 1er bloque de la siguiente.
+
+    Retorna (cantidad, pending_siguiente, consumio_primer_seq_next).
+    """
+    seqs_race = _secuencias_dorsales(race_lines)
+    # Si la carrera anterior consumió un bloque vía lookahead, no saltar la lista
+    # propia de ESTA carrera (01..N tras APUESTAS, p. ej. C2 del miércoles 23/9).
+    if skip_first_seq and seqs_race:
+        if len(seqs_race) >= 1 and 1 in seqs_race[0] and max(seqs_race[0]) >= 8:
+            skip_first_seq = False
+        else:
+            seqs_race = seqs_race[1:]
+
+    in_race, in_race_pending = _principal_y_pending_secuencias(seqs_race)
+
+    post, post_pending = _dorsales_post_stud(race_lines)
+    if skip_first_seq and post:
+        post = set(seqs_race[0]) if seqs_race else set()
+        post_pending = set(seqs_race[1]) if len(seqs_race) > 1 else None
+
+    seqs_prev = _secuencias_dorsales(prev_lines)
+    sin_propios = not in_race and not (post and _secuencia_caballos_valida(post))
+
+    next_pending: set[int] | None = None
+    vins_de_pending = bool(pending and _secuencia_caballos_valida(pending))
+    if vins_de_pending:
+        nums: set[int] | None = set(pending)  # type: ignore[arg-type]
+    elif sin_propios and len(seqs_prev) >= 2:
+        prev_a, prev_b = set(seqs_prev[-2]), set(seqs_prev[-1])
+        # Lista partida: 01..k al final de prev + (k+1)..N al inicio de next (C2)
+        if (
+            next_lines
+            and 1 in prev_b
+            and max(prev_b) < max(prev_a)
+            and max(prev_b) < 8
+        ):
+            nseqs_early = _secuencias_dorsales(next_lines)
+            if (
+                nseqs_early
+                and _secuencia_caballos_valida(nseqs_early[0])
+                and min(nseqs_early[0]) == max(prev_b) + 1
+            ):
+                nums = set(prev_b) | set(nseqs_early[0])
+            else:
+                # prev_b son suplentes de la anterior, no de esta carrera
+                nums = None
+        else:
+            nums = prev_a
+            next_pending = prev_b
+    elif len(seqs_prev) == 1 and prev_preheader:
+        # Caballos antes del header en la misma página (p. ej. C1 del miércoles 23/9)
+        nums = set(seqs_prev[0])
+    else:
+        nums = None
+
+    # Merge por max: no pisar pending más completo con in_race/post más corto
+    nums = _mejor_conjunto_dorsales(nums, in_race if in_race else None)
+    nums = _mejor_conjunto_dorsales(nums, post if post else None)
+
+    # No pasar suplentes (bloque más corto tras lista principal) como overflow
+    def _es_suplente_de(principal: set[int], extra: set[int] | None) -> bool:
+        return bool(
+            principal
+            and extra
+            and 1 in principal
+            and max(extra) < max(principal)
+        )
+
+    if in_race_pending and not _es_suplente_de(in_race, in_race_pending):
+        next_pending = _mejor_conjunto_dorsales(next_pending, in_race_pending)
+    if post_pending and not _es_suplente_de(
+        post if post else (in_race if in_race else set()),
+        post_pending,
+    ):
+        next_pending = _mejor_conjunto_dorsales(next_pending, post_pending)
+
+    # Carrera ya contada por pending: el in_race descartado (p. ej. 01-07 tras
+    # SUPLENTES en C7) pasa a la siguiente (C8 vacía → 7 caballos).
+    if (
+        vins_de_pending
+        and nums
+        and in_race
+        and _secuencia_caballos_valida(in_race)
+        and 1 in in_race
+        and max(in_race) < max(nums)
+    ):
+        next_pending = _mejor_conjunto_dorsales(next_pending, in_race)
+
+    consumio_next = False
+    # Lookahead solo si aún no hay conteo (no robar la siguiente si ya hay pending)
+    if sin_propios and next_lines:
+        nseqs = _secuencias_dorsales(next_lines)
+        if nseqs and _secuencia_caballos_valida(nseqs[0]):
+            nxt0 = set(nseqs[0])
+            # Pending débil 01..k + dorsales k+1..N al inicio de la siguiente (misma lista partida)
+            if (
+                nums
+                and 1 in nums
+                and max(nums) < 8
+                and min(nxt0) == max(nums) + 1
+            ):
+                nums = set(nums) | nxt0
+            elif (
+                not nums
+                and len(nseqs) >= 2
+                and 1 in nxt0
+                and _secuencia_caballos_valida(nseqs[1])
+                and 1 in nseqs[1]
+                and max(nseqs[1]) >= max(nxt0)
+            ):
+                # Dos listas principales en next → 1ª es overflow de esta carrera
+                nums = nxt0
+                consumio_next = True
+            # Si la 2ª es suplente más corta, no robar (C8 no toma los 8 de C9)
+
+    if next_pending and not _secuencia_caballos_valida(next_pending):
+        next_pending = None
+
+    return (max(nums) if nums else 0), next_pending, consumio_next
+
+
+def _parsear_linea_bet_reporte(linea: str) -> tuple[str, str] | None:
+    """Una línea 'Exacta $2.000' / 'Quintuplo 1° Pase$1.000' → (nombre, valor)."""
+    s = linea.strip()
+    if not s or not _PATRON_LINEA_BET_REPORTE.match(s):
+        return None
+    m_val = re.search(r"\$\s*([\d.,]+)", s)
+    valor = m_val.group(1) if m_val else ""
+    nombre = re.sub(r"\$\s*[\d.,]+", "", s).strip()
+    if not nombre:
+        return None
+    return nombre, valor
+
+
+_PATRON_DORSAL_COL_CABALLO = re.compile(r"^(0[1-9]|1\d|2[0-4])$")
+
+
+def _mul_affine(a: tuple[float, ...], b: tuple[float, ...]) -> tuple[float, ...]:
+    """Multiplica matrices afines 2D en forma (a,b,c,d,e,f)."""
+    return (
+        a[0] * b[0] + a[1] * b[2],
+        a[0] * b[1] + a[1] * b[3],
+        a[2] * b[0] + a[3] * b[2],
+        a[2] * b[1] + a[3] * b[3],
+        a[4] * b[0] + a[5] * b[2] + b[4],
+        a[4] * b[1] + a[5] * b[3] + b[5],
+    )
+
+
+def _items_posicionados_pdf(ruta_pdf: str | Path) -> list[tuple[int, float, float, str]]:
+    """Tokens de texto con posición (page, y, x, texto) vía visitor tm*cm."""
+    import pypdf
+
+    reader = pypdf.PdfReader(str(ruta_pdf))
+    items: list[tuple[int, float, float, str]] = []
+    for pi, page in enumerate(reader.pages):
+        def _visitor(
+            text: str,
+            cm: list[float],
+            tm: list[float],
+            font_dict: object,
+            font_size: float,
+            _pi: int = pi,
+        ) -> None:
+            if not text or not text.strip():
+                return
+            m = _mul_affine(tuple(tm), tuple(cm))
+            items.append((_pi, float(m[5]), float(m[4]), text.strip()))
+
+        page.extract_text(visitor_text=_visitor)
+    return items
+
+
+def _secuencia_columna_caballo_ok(nums: set[int]) -> bool:
+    """Columna CABALLO válida: empieza en 01 y llega contigua hasta el máximo."""
+    if not nums or 1 not in nums:
+        return False
+    m = max(nums)
+    return m >= 4 and len(nums) == m
+
+
+def _detectar_carreras_posicionadas(
+    items: list[tuple[int, float, float, str]],
+) -> list[tuple[int, int, float]]:
+    """Inicios de carrera (page, nro, y): dígito a la izquierda de 'a'.
+
+    Contexto válido: Condición/mts debajo, o 'hs' cerca del título, o
+    Condición en el tope de la página siguiente (carrera partida).
+    """
+    by_page: dict[int, list[tuple[float, float, str]]] = {}
+    for pi, y, x, t in items:
+        by_page.setdefault(pi, []).append((y, x, t))
+
+    hallados: list[tuple[int, int, float]] = []
+    for pi, toks in by_page.items():
+        for y, _x, t in toks:
+            m = PATRON_CARRERA_TELA_REPORTE.match(t)
+            if m:
+                hallados.append((pi, int(m.group(1)), y))
+
+        for y, x, t in toks:
+            if t.lower() not in ("a", "ª") or x > 70:
+                continue
+            best: tuple[float, int, float] | None = None
+            for y2, x2, t2 in toks:
+                if abs(y2 - y) > 18:
+                    continue
+                if not re.fullmatch(r"[1-9]|1[0-4]", t2):
+                    continue
+                if not (0 < (x - x2) < 30):
+                    continue
+                score = abs(x - x2) + abs(y2 - y)
+                if best is None or score < best[0]:
+                    best = (score, int(t2), y)
+            if best is None:
+                continue
+            _score, nro, ry = best
+            contexto = any(
+                ("Condici" in t3 or "mts" in t3)
+                and y3 < ry
+                and (ry - y3) < 120
+                for y3, _x3, t3 in toks
+            )
+            contexto = contexto or any(
+                "hs" in t3.lower() and abs(y3 - ry) < 40 and x3 < 80
+                for y3, x3, t3 in toks
+            )
+            if not contexto and (pi + 1) in by_page:
+                contexto = any(
+                    ("Condici" in t3 or "mts" in t3) and y3 > 700
+                    for y3, _x3, t3 in by_page[pi + 1]
+                )
+            if contexto:
+                hallados.append((pi, nro, ry))
+
+    best_y: dict[tuple[int, int], float] = {}
+    for pi, nro, y in hallados:
+        key = (pi, nro)
+        if key not in best_y or y > best_y[key]:
+            best_y[key] = y
+    out = [(pi, nro, y) for (pi, nro), y in best_y.items()]
+    out.sort(key=lambda r: (r[0], -r[2], r[1]))
+    return out
+
+
+def _dorsales_en_banda_inferida(
+    dorsales: list[tuple[int, float, float, int]],
+    pi: int,
+    ry: float,
+    next_bound: tuple[int, float] | None,
+    suplentes: list[tuple[int, float]],
+) -> tuple[set[int], dict[int, int], set[int]]:
+    """Sin header CABALLO usable: dorsales x∈[140,200] entre título y SUPLENTES."""
+    nums: set[int] = set()
+    per_page: dict[int, int] = {}
+    for spi, sy in sorted(suplentes, key=lambda t: (t[0], -t[1])):
+        after = (spi > pi) or (spi == pi and sy < ry)
+        if not after:
+            continue
+        if next_bound is not None:
+            npi, ny = next_bound
+            before_next = (spi < npi) or (spi == npi and sy > ny)
+            if not before_next:
+                continue
+        for dpi, dy, dx, n in dorsales:
+            if dx < 5 or not (140 <= dx <= 200):
+                continue
+            in_band = False
+            if dpi == pi == spi and sy < dy < ry:
+                in_band = True
+            elif dpi == pi and spi > pi and dy < ry:
+                in_band = True
+            elif pi < dpi < spi:
+                in_band = True
+            elif dpi == spi and spi > pi and dy > sy:
+                in_band = True
+            if in_band:
+                nums.add(n)
+                per_page[dpi] = per_page.get(dpi, 0) + 1
+        break
+    return nums, per_page, set(per_page)
+
+
+def _contar_caballos_desde_items(
+    items: list[tuple[int, float, float, str]],
+) -> dict[int, int]:
+    """Cuenta dorsales de la columna CABALLO hasta SUPLENTES (nunca debajo).
+
+    Une headers CABALLO (x>=5) entre el título y la siguiente carrera.
+    Si no hay header usable, infiere la columna por x∈[140,200].
+
+    pypdf a veces deja dorsales en x≈0 (matriz rota). Se recuperan:
+    - agujeros: huérfanos full en páginas con ≥3 hits; continuación solo 1..max;
+    - extensión +1 si hay hueco vertical a SUPLENTES y huérfano max+1.
+    """
+    carreras = _detectar_carreras_posicionadas(items)
+    if not carreras:
+        return {}
+
+    orden = sorted(carreras, key=lambda r: (r[0], -r[2], r[1]))
+    vistas: set[int] = set()
+    orden_unico: list[tuple[int, int, float]] = []
+    for pi, nro, y in orden:
+        if nro in vistas:
+            continue
+        vistas.add(nro)
+        orden_unico.append((pi, nro, y))
+
+    # Solo headers con posición real (x≈0 es basura de pypdf)
+    headers_cab = [(pi, y, x) for pi, y, x, t in items if t == "CABALLO" and x >= 5]
+    suplentes = [(pi, y) for pi, y, _x, t in items if t.upper() == "SUPLENTES"]
+    dorsales = [
+        (pi, y, x, int(t))
+        for pi, y, x, t in items
+        if _PATRON_DORSAL_COL_CABALLO.match(t)
+    ]
+    orphans_by_page: dict[int, set[int]] = {}
+    for dpi, _dy, dx, n in dorsales:
+        if dx < 5:
+            orphans_by_page.setdefault(dpi, set()).add(n)
+
+    caballos: dict[int, int] = {}
+    for i, (pi, nro, ry) in enumerate(orden_unico):
+        next_bound: tuple[int, float] | None = None
+        if i + 1 < len(orden_unico):
+            next_bound = (orden_unico[i + 1][0], orden_unico[i + 1][2])
+
+        cands: list[tuple[int, float, float]] = []
+        for hpi, hy, hx in headers_cab:
+            after_title = (hpi > pi) or (hpi == pi and hy < ry)
+            if not after_title:
+                continue
+            if next_bound is not None:
+                npi, ny = next_bound
+                before_next = (hpi < npi) or (hpi == npi and hy > ny)
+                if not before_next:
+                    continue
+            cands.append((hpi, hy, hx))
+
+        nums: set[int] = set()
+        pages: set[int] = set()
+        per_page_hits: dict[int, int] = {}
+        last_ys: list[float] = []
+        last_gaps: list[float] = []
+        last_stop: float | None = None
+
+        if cands:
+            for hpi, hy, hx in sorted(cands, key=lambda t: (t[0], -t[1])):
+                pages.add(hpi)
+                stop_y = -1e9
+                for spi, sy in suplentes:
+                    if spi == hpi and sy < hy:
+                        stop_y = max(stop_y, sy)
+                for opi, oy, _ox in headers_cab:
+                    if opi == hpi and oy < hy:
+                        stop_y = max(stop_y, oy)
+
+                ys_header: list[float] = []
+                for dpi, dy, dx, n in dorsales:
+                    if dpi != hpi or dx < 5:
+                        continue
+                    if abs(dx - hx) > 35:
+                        continue
+                    # Solo entre header y SUPLENTES (nunca debajo)
+                    if not (stop_y < dy < hy):
+                        continue
+                    nums.add(n)
+                    ys_header.append(dy)
+                    per_page_hits[hpi] = per_page_hits.get(hpi, 0) + 1
+
+                if ys_header:
+                    ys_sorted = sorted(ys_header, reverse=True)
+                    last_ys = ys_sorted
+                    last_stop = stop_y
+                    last_gaps = [
+                        ys_sorted[j] - ys_sorted[j + 1]
+                        for j in range(len(ys_sorted) - 1)
+                    ]
+        else:
+            nums, per_page_hits, pages = _dorsales_en_banda_inferida(
+                dorsales, pi, ry, next_bound, suplentes
+            )
+
+        # Agujeros: huérfanos x≈0
+        if len(nums) >= 3 and not _secuencia_columna_caballo_ok(nums):
+            m = max(nums)
+            holes = set(range(1, m + 1)) - nums
+            main_pages = {p for p, c in per_page_hits.items() if c >= 3}
+            for p in pages:
+                orph = orphans_by_page.get(p, set())
+                if p in main_pages:
+                    nums |= orph
+                else:
+                    nums |= orph & holes
+
+        # Extender +1 si hay hueco vertical hasta SUPLENTES y huérfano max+1
+        if (
+            _secuencia_columna_caballo_ok(nums)
+            and last_ys
+            and last_stop is not None
+            and last_stop > -1e8
+        ):
+            med = median(last_gaps) if last_gaps else 35.0
+            room = min(last_ys) - last_stop
+            m = max(nums)
+            if room >= med * 1.5 and any(
+                (m + 1) in orphans_by_page.get(p, set()) for p in pages
+            ):
+                nums.add(m + 1)
+
+        if _secuencia_columna_caballo_ok(nums):
+            caballos[nro] = max(nums)
+
+    return caballos
+
+
+def _caballos_por_columna_caballo(ruta_pdf: str | Path) -> dict[int, int]:
+    """Cantidad de caballos por carrera leyendo la columna CABALLO del PDF."""
+    try:
+        items = _items_posicionados_pdf(ruta_pdf)
+    except Exception:
+        return {}
+    return _contar_caballos_desde_items(items)
+
+
+def _extraer_bloque_apuestas_reporte(race_lines: list[str]) -> list[str]:
+    """Líneas de apuesta del segmento de carrera.
+
+    pypdf puede partir el bloque: parte de las apuestas arriba y Exacta/TRI
+    después de los caballos. Se toman todas las líneas que matchean apuesta,
+    no solo el tramo contiguo tras ``APUESTAS``.
+    """
+    out: list[str] = []
+    for l in race_lines:
+        s = l.strip()
+        if not s:
+            continue
+        if _PATRON_LINEA_BET_REPORTE.match(s):
+            out.append(s)
+    return out
+
+
+def _obtener_apuestas_tela_reporte_oficial(ruta_pdf: str | Path) -> list[list]:
+    """Parser v2: REPORTE PROGRAMA OFICIAL (apuestas multilínea, Na PREMIO/CLÁSICO)."""
+    import pypdf
+    reader = pypdf.PdfReader(ruta_pdf)
+    paginas = [(p.extract_text() or "").split("\n") for p in reader.pages]
+
+    headers: list[tuple[int, int, int]] = []
+    for pi, lineas in enumerate(paginas):
+        for li, l in enumerate(lineas):
+            m = PATRON_CARRERA_TELA_REPORTE.match(l.strip())
+            if m:
+                headers.append((pi, li, int(m.group(1))))
+
+    resultado: list[list] = []
+    pending_caballos: set[int] | None = None
+    skip_first_seq = False
+    caballos_columna = _caballos_por_columna_caballo(ruta_pdf)
+    for idx, (start_pi, start_li, num_carrera) in enumerate(headers):
+        if idx + 1 < len(headers):
+            end_pi, end_li, _ = headers[idx + 1]
+        else:
+            end_pi = len(paginas) - 1
+            end_li = len(paginas[end_pi]) if paginas else 0
+
+        race_lines = _segmento_entre_apuestas(paginas, start_pi, start_li, end_pi, end_li)
+
+        if idx == 0:
+            prev_lines = paginas[start_pi][:start_li]
+            if start_pi > 0:
+                prev_lines = paginas[start_pi - 1] + prev_lines
+        else:
+            p_pi, p_li, _ = headers[idx - 1]
+            prev_lines = _segmento_entre_apuestas(paginas, p_pi, p_li, start_pi, start_li)
+
+        next_lines: list[str] | None = None
+        if idx + 1 < len(headers):
+            n_pi, n_li, _ = headers[idx + 1]
+            if idx + 2 < len(headers):
+                nn_pi, nn_li, _ = headers[idx + 2]
+            else:
+                nn_pi = len(paginas) - 1
+                nn_li = len(paginas[nn_pi]) if paginas else 0
+            next_lines = _segmento_entre_apuestas(paginas, n_pi, n_li, nn_pi, nn_li)
+
+        num_caballos, pending_caballos, consumio_next = _contar_caballos_tela_reporte(
+            prev_lines,
+            race_lines,
+            pending_caballos,
+            next_lines=next_lines,
+            skip_first_seq=skip_first_seq,
+            prev_preheader=(idx == 0),
+        )
+        skip_first_seq = consumio_next
+        # Preferir columna CABALLO (coordenadas) si hay secuencia válida;
+        # si no, fallback al conteo por segmentos. No pisar columna con segmento.
+        col = caballos_columna.get(num_carrera, 0)
+        if col > 0:
+            num_caballos = col
+
+        apuestas_vistas: set[str] = set()
+        for linea in _extraer_bloque_apuestas_reporte(race_lines):
+            parsed = _parsear_linea_bet_reporte(linea)
+            if not parsed:
+                continue
+            nombre, valor = parsed
+            if not valor:
+                continue
+            if es_apuesta_excluida(nombre):
+                continue
+            codigo = abreviar_apuesta(normalizar_nombre_apuesta(nombre))
+            if not codigo or codigo not in CODIGOS_APUESTA_VALIDOS:
+                continue
+            if codigo in apuestas_vistas:
+                continue
+            if codigo in APUESTAS_SIN_COMPARAR_VALOR:
+                valor = ""
+            resultado.append([num_carrera, num_caballos, codigo, valor])
+            apuestas_vistas.add(codigo)
+
+    return resultado
+
+
 _PATRON_TITULO_TELA = re.compile(
     r"Programa\s+Depurado.*?Reunion\s+(\d+)\s+del\s+(\d{1,2}/\d{1,2}/\d{4})",
     re.IGNORECASE | re.DOTALL,
@@ -371,19 +1098,40 @@ _PATRON_FIN_ENCABEZADO_TELA = re.compile(
     re.IGNORECASE,
 )
 
+_MESES_ES = {
+    "enero": 1, "febrero": 2, "marzo": 3, "abril": 4, "mayo": 5, "junio": 6,
+    "julio": 7, "agosto": 8, "septiembre": 9, "setiembre": 9,
+    "octubre": 10, "noviembre": 11, "diciembre": 12,
+}
+
 
 def _parsear_info_reunion_tela(texto_pagina: str) -> dict[str, str]:
     """Extrae reunión/fecha/hipódromo del encabezado de tela (no fechas del cuerpo)."""
     reunion = ""
     fecha = ""
     hipodromo = ""
+    texto = texto_pagina or ""
 
-    m_titulo = _PATRON_TITULO_TELA.search(texto_pagina or "")
+    m_titulo = _PATRON_TITULO_TELA.search(texto)
     if m_titulo:
         reunion = m_titulo.group(1)
         fecha = m_titulo.group(2)
 
-    for line in (texto_pagina or "").split("\n"):
+    m_reun_rep = PATRON_REUNION_TELA_REPORTE.search(texto)
+    if m_reun_rep and not reunion:
+        reunion = m_reun_rep.group(1)
+
+    m_fecha_es = re.search(
+        r"(\d{1,2})\s+de\s+([A-Za-zÁÉÍÓÚáéíóúñÑ]+)\s+de\s+(\d{4})",
+        texto,
+        re.IGNORECASE,
+    )
+    if m_fecha_es and not fecha:
+        mes = _MESES_ES.get(m_fecha_es.group(2).lower())
+        if mes:
+            fecha = f"{int(m_fecha_es.group(1)):02d}/{mes:02d}/{m_fecha_es.group(3)}"
+
+    for line in texto.split("\n"):
         s = line.strip()
         if not s:
             continue
@@ -397,8 +1145,13 @@ def _parsear_info_reunion_tela(texto_pagina: str) -> dict[str, str]:
             d = re.search(r"(\d{1,2}/\d{1,2}/\d{4})", s)
             if d:
                 fecha = d.group(1)
-        if "Hipodromo" in s:
+        if "Hipodromo" in s or "HIPÓDROMO" in s.upper() or "HIPODROMO" in s.upper():
             hipodromo = s
+
+    if not hipodromo or "PROGRAMA" in hipodromo.upper() or len(hipodromo) > 80:
+        m_hip = re.search(r"HIP[OÓ]DROMO\s+DE\s+SAN\s+ISIDRO", texto, re.IGNORECASE)
+        if m_hip:
+            hipodromo = "Hipódromo de San Isidro"
 
     return {"reunion": reunion, "fecha": fecha, "hipodromo": hipodromo}
 
@@ -412,14 +1165,37 @@ def extraer_info_reunion_tela(ruta_pdf: str | Path) -> dict[str, str]:
 
 def obtener_apuestas_por_carrera(ruta_pdf: str | Path) -> list[list]:
     """Auto-detecta el formato del PDF y extrae las apuestas."""
-    if es_tela_oficial(ruta_pdf):
+    if es_tela_depurada(ruta_pdf):
         return _obtener_apuestas_tela_oficial(ruta_pdf)
+    if es_tela_reporte_oficial(ruta_pdf):
+        return _obtener_apuestas_tela_reporte_oficial(ruta_pdf)
     return _obtener_apuestas_programa_oficial(ruta_pdf)
 
 
-def extraer_pases_tela_oficial(ruta_pdf: str | Path) -> dict[int, dict[str, set[str]]]:
-    """Extrae info de pases (1er.Pase, 2do.Pase, etc.) para apuestas pick.
-    Retorna {num_carrera: {codigo: {pase_normalizado, ...}}}"""
+def _extraer_pases_de_lineas(
+    race_lines: list[str],
+    num_carrera: int,
+    resultado: dict[int, dict[str, set[str]]],
+) -> None:
+    pases_carrera: dict[str, set[str]] = {}
+    for l in race_lines:
+        s = l.strip()
+        if not s or s == "CHAQUETILLAS":
+            continue
+        for m in PATRON_PASE_TELA.finditer(s):
+            bet_raw = m.group(1).lower()
+            pase_raw = m.group(2)
+            pase_norm = _normalizar_pase(pase_raw)
+            codigo = abreviar_apuesta(bet_raw)
+            if codigo:
+                pases_carrera.setdefault(codigo, set()).add(pase_norm)
+    if pases_carrera:
+        dest = resultado.setdefault(num_carrera, {})
+        for codigo, pases_set in pases_carrera.items():
+            dest.setdefault(codigo, set()).update(pases_set)
+
+
+def _extraer_pases_tela_depurada(ruta_pdf: str | Path) -> dict[int, dict[str, set[str]]]:
     import pypdf
     reader = pypdf.PdfReader(ruta_pdf)
     resultado: dict[int, dict[str, set[str]]] = {}
@@ -441,8 +1217,6 @@ def extraer_pases_tela_oficial(ruta_pdf: str | Path) -> dict[int, dict[str, set[
             end_idx = apuestas_indices[idx + 1] if idx + 1 < len(apuestas_indices) else len(lineas)
             race_lines = lineas[start_idx:end_idx]
 
-            # Nro de carrera: preferir dígito DENTRO del bloque (tras Bolsa/extras).
-            # Buscar atrás primero mezcla con la carrera previa de la misma página.
             num_carrera = None
             for l in race_lines:
                 s = l.strip()
@@ -458,33 +1232,49 @@ def extraer_pases_tela_oficial(ruta_pdf: str | Path) -> dict[int, dict[str, set[
             if num_carrera is None:
                 continue
 
-            pases_carrera: dict[str, set[str]] = {}
-
-            for l in race_lines:
-                s = l.strip()
-                if not s:
-                    continue
-                if s == "CHAQUETILLAS":
-                    continue
-                for m in PATRON_PASE_TELA.finditer(s):
-                    bet_raw = m.group(1).lower()
-                    pase_raw = m.group(2)
-                    pase_norm = _normalizar_pase(pase_raw)
-                    codigo = abreviar_apuesta(bet_raw)
-                    if codigo:
-                        pases_carrera.setdefault(codigo, set()).add(pase_norm)
-
-            if pases_carrera:
-                dest = resultado.setdefault(num_carrera, {})
-                for codigo, pases_set in pases_carrera.items():
-                    dest.setdefault(codigo, set()).update(pases_set)
+            _extraer_pases_de_lineas(race_lines, num_carrera, resultado)
 
     return resultado
+
+
+def _extraer_pases_tela_reporte(ruta_pdf: str | Path) -> dict[int, dict[str, set[str]]]:
+    import pypdf
+    reader = pypdf.PdfReader(ruta_pdf)
+    paginas = [(p.extract_text() or "").split("\n") for p in reader.pages]
+    resultado: dict[int, dict[str, set[str]]] = {}
+
+    headers: list[tuple[int, int, int]] = []
+    for pi, lineas in enumerate(paginas):
+        for li, l in enumerate(lineas):
+            m = PATRON_CARRERA_TELA_REPORTE.match(l.strip())
+            if m:
+                headers.append((pi, li, int(m.group(1))))
+
+    for idx, (start_pi, start_li, num_carrera) in enumerate(headers):
+        if idx + 1 < len(headers):
+            end_pi, end_li, _ = headers[idx + 1]
+        else:
+            end_pi = len(paginas) - 1
+            end_li = len(paginas[end_pi]) if paginas else 0
+        race_lines = _segmento_entre_apuestas(paginas, start_pi, start_li, end_pi, end_li)
+        bloque = _extraer_bloque_apuestas_reporte(race_lines)
+        _extraer_pases_de_lineas(bloque, num_carrera, resultado)
+
+    return resultado
+
+
+def extraer_pases_tela_oficial(ruta_pdf: str | Path) -> dict[int, dict[str, set[str]]]:
+    """Extrae info de pases (1er.Pase, 2do.Pase, etc.) para apuestas pick.
+    Retorna {num_carrera: {codigo: {pase_normalizado, ...}}}"""
+    if es_tela_reporte_oficial(ruta_pdf):
+        return _extraer_pases_tela_reporte(ruta_pdf)
+    return _extraer_pases_tela_depurada(ruta_pdf)
 
 
 def _normalizar_pase(pase: str) -> str:
     """Normaliza nombre de pase a formato consistente.
     1er. Pase  -> 1er.Pase
+    1° Pase    -> 1er.Pase
     ultimo pase -> Ultimo Pase
     Útimo Pase  -> Ultimo Pase (variante PDF sin 'l')
     1er.Pase   -> 1er.Pase
@@ -492,6 +1282,15 @@ def _normalizar_pase(pase: str) -> str:
     2do.pa se  -> 2do.Pase"""
     if PATRON_ULTIMO_PASE.search(pase):
         return "Ultimo Pase"
+    m_grado = re.search(r"(\d+)\s*[°ºª\ufffd]", pase)
+    if m_grado:
+        n = int(m_grado.group(1))
+        mapping = {
+            1: "1er.Pase", 2: "2do.Pase", 3: "3er.Pase",
+            4: "4to.Pase", 5: "5to.Pase", 6: "6to.Pase",
+        }
+        if n in mapping:
+            return mapping[n]
     pase = pase.strip().lower()
     pase = re.sub(r"p\s*a\s*s\s*e", "pase", pase)
     pase = re.sub(r"\s+", " ", pase)

@@ -698,7 +698,7 @@ def datos_reporte_como_tuple(datos_reporte: dict) -> tuple[dict, set[str]]:
 
 
 def _ok_estado() -> str:
-    return f"[green]{SYM_OK}[/green]"
+        return f"[green]{SYM_OK}[/green]"
 
 
 def _err_estado() -> str:
@@ -2332,7 +2332,7 @@ def mostrar_resumenes_consolidado(
         else:
             hay_error = True
             lineas.append(f"[fail]{SYM_FAIL}[/fail] {nombre}")
-            for d in diferencias:
+        for d in diferencias:
                 lineas.append(f"  • {d}")
     avisos = avisos or []
     if avisos:
@@ -2347,7 +2347,6 @@ def mostrar_resumenes_consolidado(
         title=f"[bold]{titulo_panel}[/bold]",
         border_style="red" if hay_error else ("cyan" if avisos else "#2e7d32"),
     ))
-    console.print()
 
 
 

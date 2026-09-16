@@ -13,7 +13,12 @@ from rich.prompt import Prompt, Confirm
 from controlcomparador import __version__
 from controlcomparador.agent import AgenteComparacion
 from controlcomparador.detector import detectar_archivos, hipodromos_detectados, resumen_deteccion
-from controlcomparador.parsers.pdf import es_tela_oficial, obtener_apuestas_por_carrera, normalizar_desde_lista_apuestas, extraer_pases_tela_oficial
+from controlcomparador.parsers.pdf import (
+    tipo_tela_oficial,
+    obtener_apuestas_por_carrera,
+    normalizar_desde_lista_apuestas,
+    extraer_pases_tela_oficial,
+)
 from controlcomparador.parsers.report import normalizar_reporte_palermo
 from controlcomparador.ui.console import console
 from controlcomparador.ui.tables import (
@@ -760,8 +765,12 @@ def _resumen_tela_interactivo():
     ruta = seleccionar_archivo("Ruta de la tela oficial (PDF): ", {".pdf"}, "tela oficial (PDF)")
     if not ruta:
         return
-    if not es_tela_oficial(ruta):
-        console.print("[red]El archivo seleccionado no es una tela oficial (no contiene 'Programa Depurado').[/red]")
+    tipo = tipo_tela_oficial(ruta)
+    if not tipo:
+        console.print(
+            "[red]El archivo no es una tela oficial reconocida "
+            "(ni 'Programa Depurado' ni 'REPORTE PROGRAMA OFICIAL').[/red]"
+        )
         Prompt.ask("[dim]Enter para continuar...[/dim]", default="")
         return
     with console.status("[bold blue]Analizando tela oficial...[/bold blue]"):
@@ -772,7 +781,7 @@ def _resumen_tela_interactivo():
             if num_carrera in datos:
                 datos[num_carrera]["pases"] = pases_carrera
     limpiar_pantalla()
-    console.rule("[bold]RESUMEN TELA OFICIAL[/bold]")
+    console.rule(f"[bold]RESUMEN {tipo}[/bold]")
     console.print()
     imprimir_resumen_tela(datos, ruta)
     if Confirm.ask("¿Guardar como HTML para imprimir?", default=False):

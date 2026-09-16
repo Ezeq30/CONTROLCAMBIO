@@ -38,6 +38,9 @@ class TestEsApuestaExcluida:
           ("Cuaterna Selectiva 1er.Pase $2000", False),
           ("Doble $2000", False),
           ("Exacta $ 2000", False),
+          ("Doble último pase", True),
+          ("Doble 2° Pase", True),
+          ("Doble 1° Pase $2000", False),
       ],
   )
   def test_exclusion_pases(self, nombre, debe_excluir):

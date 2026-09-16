@@ -60,16 +60,20 @@ pyinstaller ControlComparador.spec
 - `pools_de_carrera()` / `bases_de_carrera()` — helpers de esas dos fuentes.
 - `validar_pick_conflict(datos_reporte)` — verifica que ninguna carrera tenga dos apuestas pick (TPL/QTN/QTP/CAD) juntas, ya que son mutuamente excluyentes.
 
-#### parsers/pdf.py - Tela Oficial
-- `es_tela_oficial(ruta)` — detecta por "Programa Depurado" en texto
-- `_obtener_apuestas_tela_oficial(ruta)` — extrae apuestas anclado por líneas `APUESTAS:` (no por `Premio`), soporta "Clásico" como header de carrera
+#### parsers/pdf.py - Tela Oficial (dos formatos)
+- `es_tela_depurada(ruta)` — "Programa Depurado" (formato viejo)
+- `es_tela_reporte_oficial(ruta)` — "PROGRAMA OFICIAL" + headers `Na PREMIO`/`Na CLÁSICO` (formato nuevo REPORTE)
+- `es_tela_oficial(ruta)` — True si cualquiera de los dos (menú Resumen / comparación)
+- `tipo_tela_oficial(ruta)` — `"TELA DEPURADA"` | `"TELA PROGRAMA OFICIAL"` | `None`
+- `_obtener_apuestas_tela_oficial(ruta)` — formato viejo: anclado por `APUESTAS:` (línea comma-separated), soporta "Clásico"
+- `_obtener_apuestas_tela_reporte_oficial(ruta)` — formato nuevo: `APUESTAS` multilínea (`Exacta $2.000`), carrera `1a PREMIO` / `8a CLÁSICO`, pases `1° Pase`
 - `_parsear_bets_tela(texto)` — parsea línea "Nombre $ Valor, ..." con filtros:
-  - **`es_apuesta_excluida(nombre)`**: excluye pases que no son 1er.Pase (2do–6to, último, final) pero mantiene 1er.Pase y Final 1er.Pase. Refuerzo con `PATRON_PASE_TELA`: si matchea pase distinto de 1er → excluir. Ver bug fix "último Pase encoding" abajo.
+  - **`es_apuesta_excluida(nombre)`**: excluye pases que no son 1er/1° Pase (2do–6to, último, final) pero mantiene 1er/1° y Final+1er. **Doble** sin pase se incluye; Doble con pase ≠ 1° se excluye. Ver bug fix "último Pase encoding" abajo.
   - **`APUESTAS_SIN_COMPARAR_VALOR`**: GAN/SEG/TER se extraen con valor vacío (solo presencia)
-- `extraer_pases_tela_oficial(ruta)` — extrae pases de tela oficial. Busca líneas después de "Bolsa Total:" y antes del nro de carrera, parsea apuestas pick con `$ Valor` y pase name (1er.Pase, 2do.Pase, etc.). Usa `_normalizar_pase()` para formato consistente. Retorna `dict[int, dict[str, set[str]]]` → `{nro_carrera: {codigo: {pase_name, ...}}}`
-- `_normalizar_pase(texto)` — normaliza nombres de pase: "1er.Pase", "2do.Pase", "3er.Pase", "4to.Pase", "5to.Pase", "Último.Pase", "Final.1er.Pase"
-- `obtener_apuestas_por_carrera(ruta)` — auto-detecta: tela oficial → `_obtener_apuestas_tela_oficial()`, otro → `_obtener_apuestas_programa_oficial()`
-- `extraer_info_reunion_tela(ruta)` — extrae `{"reunion": "54", "fecha": "14/06/2026", "hipodromo": "..."}` desde página 1 del PDF para el HTML export
+- `extraer_pases_tela_oficial(ruta)` — rama según formato; normaliza `1°`→`1er.Pase`. Retorna `{nro_carrera: {codigo: {pase_name, ...}}}`
+- `_normalizar_pase(texto)` — "1er.Pase", "2do.Pase", …, "Ultimo Pase"; también `1°`/`2º`/encoding `�`
+- `obtener_apuestas_por_carrera(ruta)` — auto-detecta: depurada → reporte oficial → programa oficial
+- `extraer_info_reunion_tela(ruta)` — depurada: título Reunion/fecha; reporte: `Reunión N°` + fecha en español + Hipódromo de San Isidro
 
 #### config.py
 - `APUESTAS_SIN_COMPARAR_VALOR = {"GAN", "SEG", "TER"}` — códigos que solo se comparan en existencia
@@ -78,20 +82,21 @@ pyinstaller ControlComparador.spec
 - `APUESTAS_IGNORAR_LAPLATA = {"GAN", "SEG", "TER", "QTN"}` — ignoradas del lado reporte en La Plata
 - `PASES_POR_APUESTA = {"TPL": ["1er.Pase", "2do.Pase", "3er.Pase"], ...}` — dict de código → lista ordenada de pases esperados
 - `PASE_ORDER = ["1er.Pase", "2do.Pase", "3er.Pase", "4to.Pase", "5to.Pase", "Último.Pase", "Final.1er.Pase"]` — orden global de todos los pases posibles
-- `PATRON_EXCLUIR_PASE_SIN_FINAL` — excluye 2do–6to y **último** pase; patrón `[úu]?ltimo` tolera encoding corrupto de pypdf (`Cuaternaltimo`, `Iltimo`, ``)
-- `PATRON_PASE_TELA` — detecta picks en líneas de pase; incluye `(?:selectivo\s+)?` para "Triplo Selectivo 1er.Pase"
+- `PATRON_EXCLUIR_PASE_SIN_FINAL` — excluye 2do–6to, `2°`–`6°` y **último** pase; patrón `[úu]?ltimo` tolera encoding corrupto de pypdf
+- `PATRON_PASE_TELA` — detecta picks (incluye **doble**); `1°` Pase; `(Final)` opcional; selectivo/jackpot
 - `PATRON_FINAL` — detecta "Final"
-- `PATRON_PRIMER_PASE` — detecta "1er.Pase"
+- `PATRON_PRIMER_PASE` — detecta "1er.Pase" y "1° Pase"
+- `PATRON_CARRERA_TELA_REPORTE` — headers `1a PREMIO` / `8a CLÁSICO` del formato nuevo
 
 #### detector.py
 - `_clasificar_pdf(ruta)` — detecta "Programa Depurado" → `"san_isidro"` (tela oficial usa mismo comparador)
 
 #### agent.py
-- `comparar_san_isidro()` — retorna `tipo_pdf: "TELA OFICIAL"` o `"OFICIAL"` según `es_tela_oficial()`
+- `comparar_san_isidro()` — retorna `tipo_pdf` vía `tipo_tela_oficial()` (`TELA DEPURADA` / `TELA PROGRAMA OFICIAL`) o `"OFICIAL"`
 
 #### app.py
-- Menú San Isidro opción 5: "Resumen de tela oficial (PDF)"
-- `_resumen_tela_interactivo()` — selecciona PDF tela oficial, muestra BASES POR APUESTA + VALIDACIONES, pregunta ¿Guardar HTML? → guarda en Escritorio y abre navegador
+- Menú San Isidro opción 5: "Resumen de tela oficial (PDF)" — acepta **ambos** formatos de tela
+- `_resumen_tela_interactivo()` — selecciona PDF tela, muestra tipo detectado, BASES + VALIDACIONES, pregunta ¿Guardar HTML?
 - `_comparar_san_isidro_interactivo()` — flujo completo: selecciona PDF + reporte, compara, muestra tipo_pdf
 - Extrae pases con `extraer_pases_tela_oficial()` y los mergea en los datos para validación de secuencias
 
@@ -107,7 +112,7 @@ pyinstaller ControlComparador.spec
 
 ### Reglas de negocio importantes
 
-- **Tela Oficial San Isidro**: anclaje por `APUESTAS:` (no `Premio`). Las líneas después de "Bolsa Total:" y antes del número de carrera son "extra bets" (pases). Se filtran con `es_apuesta_excluida()`. GAN/SEG/TER se extraen como presencia (None), no como valor.
+- **Tela Oficial San Isidro (dos formatos):** (1) Programa Depurado — `APUESTAS:` comma-separated; (2) REPORTE PROGRAMA OFICIAL — `APUESTAS` multilínea y pases `1° Pase`. El menú Resumen y la comparación detectan ambos. Solo `1er`/`1°` Pase con `$` cuenta como pick base; 2do–6to/`2°`–`6°` y último son secuencia.
 - **La Plata:** CUATERNA = QTN, CUATRIFECTA = CUA (al revés que otros hipódromos)
 - **La Plata — tabla planilla vs reporte:** igual que el comparador, la columna Rep. lee montos de `bases` (RSM TABLE); la presencia en reporte usa `apuestas` (AVAILABLE POOLS). La tabla posting (derecha) ya usaba `bases`; la izquierda quedó alineada en v2.0.64.
 - **San Isidro — dos fuentes del reporte:** `apuestas` = AVAILABLE POOLS (columna Ap.R, presencia). `bases` = RSM TABLE (columnas B.RSM / RSM, montos). Cada columna lee solo su fuente.

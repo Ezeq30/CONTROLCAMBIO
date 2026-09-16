@@ -22,28 +22,77 @@ _PASE_ULTIMO_FRAGMENT = (
 )
 _PASE_ULTIMO_SUFFIX = rf"(?:{_PASE_ULTIMO_FRAGMENT})\s*\.?\s*p\s*a\s*s\s*e"
 
+# Grado ordinal PDF (1°, 1º) y replacement char cuando pypdf corrompe ° → �
+_PASE_GRADO = r"[°ºª\ufffd]"
+
 # Apuestas a excluir: desde 2do pase en adelante (último flexible por encoding PDF)
+# Incluye forma nueva "2° Pase" / "2� Pase" del REPORTE PROGRAMA OFICIAL.
 PATRON_EXCLUIR_PASE_SIN_FINAL = re.compile(
     r"2do\s*\.?\s*p\s*a\s*s\s*e"
     r"|3er\s*\.?\s*p\s*a\s*s\s*e"
     r"|4to\s*\.?\s*p\s*a\s*s\s*e"
     r"|5to\s*\.?\s*p\s*a\s*s\s*e"
     r"|6to\s*\.?\s*p\s*a\s*s\s*e"
+    rf"|2\s*{_PASE_GRADO}\s*\.?\s*p\s*a\s*s\s*e"
+    rf"|3\s*{_PASE_GRADO}\s*\.?\s*p\s*a\s*s\s*e"
+    rf"|4\s*{_PASE_GRADO}\s*\.?\s*p\s*a\s*s\s*e"
+    rf"|5\s*{_PASE_GRADO}\s*\.?\s*p\s*a\s*s\s*e"
+    rf"|6\s*{_PASE_GRADO}\s*\.?\s*p\s*a\s*s\s*e"
     rf"|{_PASE_ULTIMO_SUFFIX}",
     re.IGNORECASE,
 )
 PATRON_ULTIMO_PASE = re.compile(rf"\b{_PASE_ULTIMO_SUFFIX}\b", re.IGNORECASE)
 PATRON_FINAL = re.compile(r"\bfinal\b|final\s*pase", re.IGNORECASE)
-PATRON_PRIMER_PASE = re.compile(r"\b1er\s*\.?\s*p\s*a\s*s\s*e\b|\b1re\s*\.?\s*p\s*a\s*s\s*e\b", re.IGNORECASE)
+# 1er.Pase (tela vieja) y 1° / 1º / 1� Pase (REPORTE PROGRAMA OFICIAL)
+PATRON_PRIMER_PASE = re.compile(
+    rf"\b1(?:er|re)\s*\.?\s*p\s*a\s*s\s*e\b"
+    rf"|\b1\s*{_PASE_GRADO}\s*\.?\s*p\s*a\s*s\s*e\b",
+    re.IGNORECASE,
+)
 
-# Patrón para detectar pases en tela oficial (Cuaterna 1er.Pase, Cuaterna Con Jackpot 1er.Pase, etc.)
-# "Selectiva/Selectivo" y "Con Jackpot" son opcionales entre el nombre y el pase.
+# Fragmento de etiqueta de pase (1er / 2do / 1° / último)
+_PASE_ETIQUETA = (
+    r"1er\s*\.?\s*p\s*a\s*s\s*e|1re\s*\.?\s*p\s*a\s*s\s*e"
+    rf"|1\s*{_PASE_GRADO}\s*\.?\s*p\s*a\s*s\s*e"
+    r"|2do\s*\.?\s*p\s*a\s*s\s*e"
+    rf"|2\s*{_PASE_GRADO}\s*\.?\s*p\s*a\s*s\s*e"
+    r"|3er\s*\.?\s*p\s*a\s*s\s*e"
+    rf"|3\s*{_PASE_GRADO}\s*\.?\s*p\s*a\s*s\s*e"
+    r"|4to\s*\.?\s*p\s*a\s*s\s*e"
+    rf"|4\s*{_PASE_GRADO}\s*\.?\s*p\s*a\s*s\s*e"
+    r"|5to\s*\.?\s*p\s*a\s*s\s*e"
+    rf"|5\s*{_PASE_GRADO}\s*\.?\s*p\s*a\s*s\s*e"
+    r"|6to\s*\.?\s*p\s*a\s*s\s*e"
+    rf"|6\s*{_PASE_GRADO}\s*\.?\s*p\s*a\s*s\s*e"
+    rf"|{_PASE_ULTIMO_SUFFIX}"
+)
+
+# Patrón para detectar pases en tela oficial (Cuaterna 1er.Pase, Doble 1° Pase, etc.)
+# "Selectiva/Selectivo", "Con Jackpot" y "(Final)" opcionales entre el nombre y el pase.
 # jack\s*po\s*t: pypdf a veces parte "Jackpot" como "Jackpo t"
 PATRON_PASE_TELA = re.compile(
-    r"(cuaterna|quintuplo|triplo|cadena)\s+(?:con\s+jack\s*po\s*t\s+)?(?:selectiv[oa]\s+)?(?:final\s+)?"
-    r"(1er\s*\.?\s*p\s*a\s*s\s*e|2do\s*\.?\s*p\s*a\s*s\s*e|3er\s*\.?\s*p\s*a\s*s\s*e"
-    r"|4to\s*\.?\s*p\s*a\s*s\s*e|5to\s*\.?\s*p\s*a\s*s\s*e|6to\s*\.?\s*p\s*a\s*s\s*e"
-    rf"|{_PASE_ULTIMO_SUFFIX})",
+    r"(cuaterna|quintuplo|triplo|cadena|doble)\s+"
+    r"(?:con\s+jack\s*po\s*t\s+)?"
+    r"(?:selectiv[oa]\s+)?"
+    r"(?:\(\s*final\s*\)\s*|final\s+)?"
+    rf"({_PASE_ETIQUETA})",
+    re.IGNORECASE,
+)
+
+# Header de carrera en REPORTE PROGRAMA OFICIAL: "1a PREMIO …", "8a CLÁSICO …"
+PATRON_CARRERA_TELA_REPORTE = re.compile(
+    r"^(\d+)\s*[aªº]\s+(?:PREMIO|CL[AÁ]SICO|\S+)",
+    re.IGNORECASE | re.MULTILINE,
+)
+
+# Dorsal "01 NOMBRE" o pegado "0SI02 NOMBRE" (evitar "- 01 -" de CHAQUETILLAS)
+PATRON_DORSAL_TELA_REPORTE = re.compile(
+    r"(?<![-–])(?<!\d)(0?[1-9]|1\d|2[0-4])\s+(?:[A-ZÁÉÍÓÚÑ]|')",
+)
+
+# Header de grilla ("STUD 4 ÚLTIMAS…CABALLO JOCKEY"); no nombres de stud ("STUD GRR")
+PATRON_HEADER_STUD_TELA_REPORTE = re.compile(
+    r"^STUD\s*4\b|ÚLTIMAS|ULTIMAS|CABALLO\s+JOCKEY",
     re.IGNORECASE,
 )
 
@@ -165,8 +214,18 @@ PATRON_CARRERA_OFICIAL = re.compile(r"^\s*(\d+)\s*[^0-9A-Za-z]?\s*Carrera\b", re
 # Patrón CARD DEFAULT MINIMUMS
 PATRON_DEFAULT = re.compile(r"(GAN|SEG|TER|EXA|IMP|TRI|DOB|TPL|QTN|QTP|CAD|CUA)\s+([\d.,]+)")
 
-# Patrón para detectar PDF Tela Oficial San Isidro
+# Patrón para detectar PDF Tela Oficial San Isidro (formato viejo)
 PATRON_PROGRAMA_DEPURADO = re.compile(r"Programa\s+Depurado", re.IGNORECASE)
+
+# Formato nuevo: REPORTE PROGRAMA OFICIAL (apuestas multilínea, pases 1° Pase)
+PATRON_PROGRAMA_OFICIAL_REPORTE = re.compile(
+    r"PROGRAMA\s+OFICIAL",
+    re.IGNORECASE,
+)
+PATRON_REUNION_TELA_REPORTE = re.compile(
+    r"Reuni[oó]n\s*N\s*[°ºª\ufffd]?\s*(\d+)",
+    re.IGNORECASE,
+)
 
 # Símbolos de la UI (compatibles con Windows cp1252)
 SYM_OK = "[OK]"
