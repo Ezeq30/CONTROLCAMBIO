@@ -573,10 +573,12 @@ def _titulo_panel_der(titulo: str) -> str:
     raw = titulo.removeprefix("COMPARACION ").strip()
     if "POSTING" not in raw.upper():
         return _titulo_panel_izq(titulo)
+    # Separar por · o " vs " para no dejar "POSTING vs REPORTE" como una sola parte
+    # (eso duplicaba el título: "Posting Vs Posting Vs Reporte vs Reporte").
     partes = [
         p.strip()
-        for p in raw.replace("·", "|").split("|")
-        if p.strip().upper() not in ("POSTING", "REPORTE")
+        for p in re.split(r"\s*[·|]\s*|\s+vs\s+", raw, flags=re.IGNORECASE)
+        if p.strip() and p.strip().upper() not in ("POSTING", "REPORTE", "VS")
     ]
     fuente = " ".join(partes).strip().title() or "Oficial"
     return f"Posting Vs {fuente} vs Reporte"

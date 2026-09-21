@@ -126,6 +126,14 @@ def test_titulos_panel_par_palermo():
     assert tables._titulo_panel_der(titulo_der) == "Posting Vs Bases Palermo vs Reporte"
 
 
+def test_titulo_panel_der_posting_vs_reporte_no_duplica():
+    """Sin fuente (planilla vacía) no debe quedar 'Posting Vs Posting Vs Reporte vs Reporte'."""
+    assert tables._titulo_panel_der("COMPARACION POSTING vs REPORTE") == "Posting Vs Oficial vs Reporte"
+    assert tables._titulo_panel_der(
+        "COMPARACION Planilla · POSTING · REPORTE"
+    ) == "Posting Vs Planilla vs Reporte"
+
+
 def test_escribir_salida_fija_preserva_ancho():
     import io
     import sys

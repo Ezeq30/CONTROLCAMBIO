@@ -115,6 +115,7 @@ pyinstaller ControlComparador.spec
 - **Tela Oficial San Isidro (dos formatos):** (1) Programa Depurado — `APUESTAS:` comma-separated; (2) REPORTE PROGRAMA OFICIAL — `APUESTAS` multilínea y pases `1° Pase`. El menú Resumen y la comparación detectan ambos. Solo `1er`/`1°` Pase con `$` cuenta como pick base; 2do–6to/`2°`–`6°` y último son secuencia.
 - **La Plata:** CUATERNA = QTN, CUATRIFECTA = CUA (al revés que otros hipódromos)
 - **La Plata — tabla planilla vs reporte:** igual que el comparador, la columna Rep. lee montos de `bases` (RSM TABLE); la presencia en reporte usa `apuestas` (AVAILABLE POOLS). La tabla posting (derecha) ya usaba `bases`; la izquierda quedó alineada en v2.0.64.
+- **La Plata — header planilla:** el bloque PROGRAMA DE APUESTAS acepta cabecera `MAN` o `M` + `CAR` (algunos XLS traen solo `M`).
 - **San Isidro — dos fuentes del reporte:** `apuestas` = AVAILABLE POOLS (columna Ap.R, presencia). `bases` = RSM TABLE (columnas B.RSM / RSM, montos). Cada columna lee solo su fuente.
 - **Extra en Ap.R:** cualquier código en AVAILABLE POOLS que no esté en el oficial es error (`está de más en el reporte, no está en el oficial`), incluido IMP/EXA/TRI.
 - **Extra EXA/TRI en posting:** si EXA/TRI están en B.RSM o posting por ALL y no en el oficial, la tabla derecha marca `extra` (aviso cyan) y no compara contra el oficial. Si Post vs B.RSM difiere, sí es error.

@@ -54,7 +54,8 @@ def leer_planilla_laplata(ruta: str | Path) -> dict[int, dict]:
     for row in range(min(sheet.nrows, 200)):
         values = [str(sheet.cell_value(row, c)).strip().upper() for c in range(sheet.ncols)]
         for c, v in enumerate(values):
-            if v == "MAN":
+            # Algunas planillas usan "M" en lugar de "MAN" (PROGRAMA DE APUESTAS).
+            if v in ("MAN", "M"):
                 man_idx = c
             if v == "CAR":
                 car_idx = c
