@@ -207,6 +207,102 @@ class TestColumnaCaballoPosicional:
         ]
         assert _contar_caballos_desde_items(items) == {8: 7}
 
+    def test_carrera_15_detectada_y_cuenta_caballos(self):
+        """Reuniones con C15: el nro ya no está limitado a 1–14 (tope 1–22)."""
+        items = [
+            (0, 800.0, 30.0, "14"),
+            (0, 800.0, 42.0, "a"),
+            (0, 780.0, 80.0, "Condición:"),
+            (0, 700.0, 170.0, "CABALLO"),
+            (0, 680.0, 170.0, "01"),
+            (0, 660.0, 170.0, "02"),
+            (0, 640.0, 170.0, "03"),
+            (0, 620.0, 170.0, "04"),
+            (0, 600.0, 170.0, "05"),
+            (0, 580.0, 170.0, "06"),
+            (0, 560.0, 170.0, "07"),
+            (0, 540.0, 170.0, "08"),
+            (0, 520.0, 170.0, "09"),
+            (0, 500.0, 170.0, "10"),
+            (0, 450.0, 275.0, "SUPLENTES"),
+            (1, 800.0, 30.0, "15"),
+            (1, 800.0, 42.0, "a"),
+            (1, 780.0, 80.0, "Condición:"),
+            (1, 700.0, 170.0, "CABALLO"),
+            (1, 680.0, 170.0, "01"),
+            (1, 660.0, 170.0, "02"),
+            (1, 640.0, 170.0, "03"),
+            (1, 620.0, 170.0, "04"),
+            (1, 600.0, 170.0, "05"),
+            (1, 580.0, 170.0, "06"),
+            (1, 560.0, 170.0, "07"),
+            (1, 540.0, 170.0, "08"),
+            (1, 520.0, 170.0, "09"),
+            (1, 500.0, 170.0, "10"),
+            (1, 480.0, 170.0, "11"),
+            (1, 460.0, 170.0, "12"),
+            (1, 400.0, 275.0, "SUPLENTES"),
+        ]
+        out = _contar_caballos_desde_items(items)
+        assert out[14] == 10
+        assert out[15] == 12
+
+    def test_columna_sparse_c4_une_orphans(self):
+        """Solo 09 en columna + orphans 01–08,10 → 10 (no caer a segmento)."""
+        items = [
+            (0, 800.0, 30.0, "4"),
+            (0, 800.0, 42.0, "a"),
+            (0, 780.0, 80.0, "Condición:"),
+            (0, 700.0, 170.0, "CABALLO"),
+            (0, 400.0, 170.0, "09"),
+            (0, 300.0, 275.0, "SUPLENTES"),
+            (0, 900.0, 0.0, "01"),
+            (0, 900.0, 0.0, "02"),
+            (0, 900.0, 0.0, "03"),
+            (0, 900.0, 0.0, "04"),
+            (0, 900.0, 0.0, "05"),
+            (0, 900.0, 0.0, "06"),
+            (0, 900.0, 0.0, "07"),
+            (0, 900.0, 0.0, "08"),
+            (0, 900.0, 0.0, "10"),
+        ]
+        assert _contar_caballos_desde_items(items)[4] == 10
+
+    def test_columna_sparse_c6_une_orphans(self):
+        """Columna {03,04} + orphans → 8."""
+        items = [
+            (0, 800.0, 30.0, "6"),
+            (0, 800.0, 42.0, "a"),
+            (0, 780.0, 80.0, "Condición:"),
+            (0, 700.0, 170.0, "CABALLO"),
+            (0, 620.0, 170.0, "03"),
+            (0, 580.0, 170.0, "04"),
+            (0, 350.0, 275.0, "SUPLENTES"),
+            (0, 900.0, 0.0, "01"),
+            (0, 900.0, 0.0, "02"),
+            (0, 900.0, 0.0, "05"),
+            (0, 900.0, 0.0, "06"),
+            (0, 900.0, 0.0, "07"),
+            (0, 900.0, 0.0, "08"),
+        ]
+        assert _contar_caballos_desde_items(items)[6] == 8
+
+    def test_carrera_22_detectada(self):
+        """Tope superior del detector: carrera 22."""
+        items = [
+            (0, 800.0, 30.0, "22"),
+            (0, 800.0, 42.0, "a"),
+            (0, 780.0, 80.0, "Condición:"),
+            (0, 700.0, 170.0, "CABALLO"),
+            (0, 680.0, 170.0, "01"),
+            (0, 660.0, 170.0, "02"),
+            (0, 640.0, 170.0, "03"),
+            (0, 620.0, 170.0, "04"),
+            (0, 600.0, 170.0, "05"),
+            (0, 550.0, 275.0, "SUPLENTES"),
+        ]
+        assert _contar_caballos_desde_items(items)[22] == 5
+
     def test_huerfanos_completan_agujeros_c2(self):
         """Dorsales parciales + huérfanos x≈0 → 10 (no 11 del fallback frágil)."""
         items = [
@@ -356,6 +452,32 @@ _DOWNLOADS = Path(r"C:/Users/cdiaz/Downloads")
 PDF_MIERCOLES = next(_DOWNLOADS.glob("REPORTE PROGRAMA OFICIAL MIERCOLES*.pdf"), None)
 PDF_VIERNES = next(_DOWNLOADS.glob("REPORTE PROGRAMA OFICIAL VIERNES*.pdf"), None)
 PDF_JUEVES = next(_DOWNLOADS.glob("REPORTE PROGRAMA OFICIAL JUEVES*.pdf"), None)
+PDF_SABADO_26 = next(
+    _DOWNLOADS.glob("Programa Oficial Sabado 26 de septiembre*.pdf"), None
+)
+
+
+@pytest.mark.skipif(PDF_SABADO_26 is None, reason="PDF sábado 26/09 no disponible")
+class TestTelaReporteSabado26:
+    def test_carrera_15_no_queda_en_cero(self):
+        """Bug: detector limitaba nros a 1–14 → C15=0 y C14 absorbía caballos."""
+        datos = normalizar_desde_lista_apuestas(
+            obtener_apuestas_por_carrera(PDF_SABADO_26)
+        )
+        assert 15 in datos
+        assert datos[15]["caballos"] == 12
+        assert datos[14]["caballos"] == 10
+        assert all(d["caballos"] > 0 for d in datos.values())
+
+    def test_mapa_c4_a_c7_orphans_sparse(self):
+        """Columna sparse + orphans: C4=10, C5=9, C6=8, C7=9."""
+        datos = normalizar_desde_lista_apuestas(
+            obtener_apuestas_por_carrera(PDF_SABADO_26)
+        )
+        assert datos[4]["caballos"] == 10
+        assert datos[5]["caballos"] == 9
+        assert datos[6]["caballos"] == 8
+        assert datos[7]["caballos"] == 9
 
 
 @pytest.mark.skipif(PDF_MIERCOLES is None, reason="PDF miércoles no disponible")

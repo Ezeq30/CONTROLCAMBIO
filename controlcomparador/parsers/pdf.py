@@ -753,6 +753,7 @@ def _detectar_carreras_posicionadas(
 
     Contexto válido: Condición/mts debajo, o 'hs' cerca del título, o
     Condición en el tope de la página siguiente (carrera partida).
+    Nro de carrera: 1–22 (antes 1–14; reuniones con 15+ quedaban en 0 caballos).
     """
     by_page: dict[int, list[tuple[float, float, str]]] = {}
     for pi, y, x, t in items:
@@ -772,7 +773,7 @@ def _detectar_carreras_posicionadas(
             for y2, x2, t2 in toks:
                 if abs(y2 - y) > 18:
                     continue
-                if not re.fullmatch(r"[1-9]|1[0-4]", t2):
+                if not re.fullmatch(r"[1-9]|1[0-9]|2[0-2]", t2):
                     continue
                 if not (0 < (x - x2) < 30):
                     continue
@@ -857,7 +858,8 @@ def _contar_caballos_desde_items(
     Si no hay header usable, infiere la columna por x∈[140,200].
 
     pypdf a veces deja dorsales en x≈0 (matriz rota). Se recuperan:
-    - agujeros: huérfanos full en páginas con ≥3 hits; continuación solo 1..max;
+    - columna sparse (<3 hits): merge total de huérfanos si forman 01..N;
+    - agujeros con ≥3 hits: huérfanos solo en 1..max (no espurios >max);
     - extensión +1 si hay hueco vertical a SUPLENTES y huérfano max+1.
     """
     carreras = _detectar_carreras_posicionadas(items)
@@ -948,17 +950,26 @@ def _contar_caballos_desde_items(
                 dorsales, pi, ry, next_bound, suplentes
             )
 
-        # Agujeros: huérfanos x≈0
-        if len(nums) >= 3 and not _secuencia_columna_caballo_ok(nums):
-            m = max(nums)
-            holes = set(range(1, m + 1)) - nums
-            main_pages = {p for p, c in per_page_hits.items() if c >= 3}
-            for p in pages:
-                orph = orphans_by_page.get(p, set())
-                if p in main_pages:
-                    nums |= orph
-                else:
-                    nums |= orph & holes
+        # Huérfanos x≈0:
+        # - columna sparse (<3 hits): merge total si forma 01..N (C4–C7 sábado);
+        # - con ≥3 hits y agujeros: rellenar solo 1..max (no tomar orphan espurio >max).
+        if not _secuencia_columna_caballo_ok(nums):
+            if len(nums) < 3:
+                merged = set(nums)
+                for p in pages:
+                    merged |= orphans_by_page.get(p, set())
+                if _secuencia_columna_caballo_ok(merged):
+                    nums = merged
+            elif len(nums) >= 3:
+                m = max(nums)
+                holes = set(range(1, m + 1)) - nums
+                main_pages = {p for p, c in per_page_hits.items() if c >= 3}
+                for p in pages:
+                    orph = orphans_by_page.get(p, set())
+                    if p in main_pages:
+                        nums |= orph
+                    else:
+                        nums |= orph & holes
 
         # Extender +1 si hay hueco vertical hasta SUPLENTES y huérfano max+1
         if (
