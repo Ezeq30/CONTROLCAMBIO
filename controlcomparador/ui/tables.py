@@ -389,7 +389,10 @@ def _nombre_fuente_corto(etiq: str) -> str:
         return "planilla"
     if "BASES" in u:
         return "bases"
-    if u == "OFICIAL":
+    # PROGRAMA OFICIAL (canónico SI) y OFICIAL legacy → misma columna "oficial"
+    if u == "OFICIAL" or u == "PROGRAMA OFICIAL" or (
+        u.endswith("OFICIAL") and "TELA" not in u
+    ):
         return "oficial"
     return etiq.lower().split()[0]
 
@@ -400,7 +403,10 @@ def _header_columna_fuente(etiq: str, *, par: bool = False, compacto: bool = Fal
         return "Tela" if par else "Tela Oficial"
     if "TELA" in u:
         return "Tela"
-    if u == "OFICIAL":
+    # PROGRAMA OFICIAL = fuente oficial del control SI (no "tela")
+    if u == "OFICIAL" or u == "PROGRAMA OFICIAL" or (
+        u.endswith("OFICIAL") and "TELA" not in u
+    ):
         return "Ofic" if par else "Oficial"
     if "PALERMO" in u or "BASES" in u:
         return "Bases"

@@ -231,6 +231,12 @@ def _ejecutar_comparacion_san_isidro(
     diffs: list[tuple[str, list[str]]] = []
     meta = [f"PDF: {pdf.name}", f"Reporte: {reporte.name}", f"Version: {__version__}"]
 
+    if not rutas_posting:
+        console.print(
+            "[yellow]Sin archivos CARD POSTING PRICES — "
+            "no se muestra el panel Posting al lado.[/yellow]"
+        )
+
     with console.status("[bold blue]Comparando San Isidro...[/bold blue]"):
         resultado = _agente.comparar_san_isidro(pdf, reporte)
     meta.append(f"Tipo PDF: {resultado.get('tipo_pdf', 'OFICIAL')}")
@@ -488,6 +494,12 @@ def ejecutar_auto_comparacion(seleccion: str, deteccion: dict) -> None:
         if not pdf or not reporte:
             console.print("[red]Faltan archivos para San Isidro.[/red]")
             return
+        if posting:
+            console.print(
+                f"[green]Posting detectado ({len(posting)}): "
+                f"{', '.join(Path(p).name for p in posting)} "
+                f"— se muestra panel al lado.[/green]"
+            )
         _ejecutar_comparacion_san_isidro(pdf, reporte, posting)
 
     elif seleccion == "palermo":
@@ -729,17 +741,17 @@ def _menu_san_isidro_interactivo():
             "COMPARAR ARCHIVOS - SAN ISIDRO",
             archivos,
             [
-                ("1", "Seleccionar programa oficial o tela (PDF)"),
+                ("1", "Seleccionar programa oficial (PDF)"),
                 ("2", "Seleccionar reporte (TXT)"),
                 ("3", "Seleccionar Posting Prices (TXT)"),
                 ("4", "COMPARAR ARCHIVOS"),
-                ("5", "Resumen de tela oficial (PDF)"),
+                ("5", "Resumen de programa oficial (PDF)"),
                 ("0", "Volver al menu principal"),
             ],
         )
 
         if op == "1":
-            ruta = seleccionar_archivo("Ruta del PDF: ", {".pdf"}, "programa oficial o tela (PDF)")
+            ruta = seleccionar_archivo("Ruta del PDF: ", {".pdf"}, "programa oficial (PDF)")
             if ruta:
                 ruta_pdf = ruta
         elif op == "2":
@@ -771,18 +783,22 @@ def _menu_san_isidro_interactivo():
 
 
 def _resumen_tela_interactivo():
-    ruta = seleccionar_archivo("Ruta de la tela oficial (PDF): ", {".pdf"}, "tela oficial (PDF)")
+    ruta = seleccionar_archivo(
+        "Ruta del programa oficial (PDF): ",
+        {".pdf"},
+        "programa oficial (PDF)",
+    )
     if not ruta:
         return
     tipo = tipo_tela_oficial(ruta)
     if not tipo:
         console.print(
-            "[red]El archivo no es una tela oficial reconocida "
-            "(ni 'Programa Depurado' ni 'REPORTE PROGRAMA OFICIAL').[/red]"
+            "[red]El archivo no es un programa oficial reconocido "
+            "(ni 'PROGRAMA OFICIAL' ni 'Programa Depurado').[/red]"
         )
         Prompt.ask("[dim]Enter para continuar...[/dim]", default="")
         return
-    with console.status("[bold blue]Analizando tela oficial...[/bold blue]"):
+    with console.status("[bold blue]Analizando programa oficial...[/bold blue]"):
         apuestas_raw = obtener_apuestas_por_carrera(ruta)
         datos = normalizar_desde_lista_apuestas(apuestas_raw)
         pases = extraer_pases_tela_oficial(ruta)

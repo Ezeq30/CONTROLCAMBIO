@@ -64,7 +64,7 @@ pyinstaller ControlComparador.spec
 - `es_tela_depurada(ruta)` — "Programa Depurado" (formato viejo)
 - `es_tela_reporte_oficial(ruta)` — "PROGRAMA OFICIAL" + headers `Na PREMIO`/`Na CLÁSICO` (formato nuevo REPORTE)
 - `es_tela_oficial(ruta)` — True si cualquiera de los dos (menú Resumen / comparación)
-- `tipo_tela_oficial(ruta)` — `"TELA DEPURADA"` | `"TELA PROGRAMA OFICIAL"` | `None`
+- `tipo_tela_oficial(ruta)` — `"TELA DEPURADA"` | `"PROGRAMA OFICIAL"` | `None` (PROGRAMA OFICIAL = fuente canónica del control SI)
 - `_obtener_apuestas_tela_oficial(ruta)` — formato viejo: anclado por `APUESTAS:` (línea comma-separated), soporta "Clásico"
 - `_obtener_apuestas_tela_reporte_oficial(ruta)` — formato nuevo: `APUESTAS` multilínea (`Exacta $2.000`), carrera `1a PREMIO` / `8a CLÁSICO`, pases `1° Pase`
 - `_parsear_bets_tela(texto)` — parsea línea "Nombre $ Valor, ..." con filtros:
@@ -89,13 +89,13 @@ pyinstaller ControlComparador.spec
 - `PATRON_CARRERA_TELA_REPORTE` — headers `1a PREMIO` / `8a CLÁSICO` del formato nuevo
 
 #### detector.py
-- `_clasificar_pdf(ruta)` — detecta `PATRON_CARRERA_PDF`, "Programa Depurado" o `PROGRAMA OFICIAL` → `"san_isidro"` (ambos formatos de tela)
+- `_clasificar_pdf(ruta)` — detecta `PATRON_CARRERA_PDF` (legacy), "Programa Depurado" o `PROGRAMA OFICIAL` → `"san_isidro"`
 
 #### agent.py
-- `comparar_san_isidro()` — retorna `tipo_pdf` vía `tipo_tela_oficial()` (`TELA DEPURADA` / `TELA PROGRAMA OFICIAL`) o `"OFICIAL"`
+- `comparar_san_isidro()` — retorna `tipo_pdf` vía `tipo_tela_oficial()` (`TELA DEPURADA` / `PROGRAMA OFICIAL`) o `"OFICIAL"` (fallback legacy)
 
 #### app.py
-- Menú San Isidro opción 5: "Resumen de tela oficial (PDF)" — acepta **ambos** formatos de tela
+- Menú San Isidro opción 5: "Resumen de programa oficial (PDF)" — acepta PROGRAMA OFICIAL y Programa Depurado
 - `_resumen_tela_interactivo()` — selecciona PDF tela, muestra tipo detectado, BASES + VALIDACIONES, pregunta ¿Guardar HTML?
 - `_comparar_san_isidro_interactivo()` — flujo completo: selecciona PDF + reporte, compara, muestra tipo_pdf
 - Extrae pases con `extraer_pases_tela_oficial()` y los mergea en los datos para validación de secuencias

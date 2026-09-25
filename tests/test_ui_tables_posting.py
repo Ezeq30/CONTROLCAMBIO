@@ -86,6 +86,10 @@ def test_headers_completos_par():
     assert tables._header_columna_fuente("TELA OFICIAL", par=False) == "Tela Oficial"
     assert tables._header_columna_fuente("OFICIAL", par=True) == "Ofic"
     assert tables._header_columna_fuente("OFICIAL", par=False) == "Oficial"
+    assert tables._header_columna_fuente("PROGRAMA OFICIAL", par=True) == "Ofic"
+    assert tables._header_columna_fuente("PROGRAMA OFICIAL", par=False) == "Oficial"
+    assert tables._nombre_fuente_corto("PROGRAMA OFICIAL") == "oficial"
+    assert tables._es_fuente_si("PROGRAMA OFICIAL")
     assert tables._header_columna_reporte(par=True) == "Rep."
     assert tables._header_columna_reporte(par=True, bases_rsm=True) == "B.RSM"
     assert tables._header_columna_rsm(par=True) == "RSM"

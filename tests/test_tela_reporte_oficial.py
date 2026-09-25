@@ -22,6 +22,7 @@ from controlcomparador.parsers.pdf import (
     _normalizar_pase,
     _parsear_info_reunion_tela,
     _parsear_linea_bet_reporte,
+    _parsear_bets_en_linea_reporte,
 )
 from controlcomparador.ui import tables
 
@@ -75,7 +76,7 @@ class TestTelaReporteProgramaOficial:
         assert es_tela_reporte_oficial(FIXTURE_REPORTE) is True
         assert es_tela_depurada(FIXTURE_REPORTE) is False
         assert es_tela_oficial(FIXTURE_REPORTE) is True
-        assert tipo_tela_oficial(FIXTURE_REPORTE) == "TELA PROGRAMA OFICIAL"
+        assert tipo_tela_oficial(FIXTURE_REPORTE) == "PROGRAMA OFICIAL"
 
     def test_info_reunion(self):
         info = extraer_info_reunion_tela(FIXTURE_REPORTE)
@@ -182,6 +183,43 @@ class TestImperfectaExtraParseo:
         nombre, val = parsed
         assert val == valor
         assert abreviar_apuesta(normalizar_nombre_apuesta(nombre)) == "IMP"
+
+
+class TestBetsMultilineaExport8248:
+    """Export numérico pega varias apuestas en una sola línea de texto."""
+
+    def test_tercero_y_exacta_en_misma_linea(self):
+        bets = _parsear_bets_en_linea_reporte("Tercero $2  Exacta $2.000")
+        codigos = [
+            abreviar_apuesta(normalizar_nombre_apuesta(n)) for n, _v in bets
+        ]
+        assert codigos == ["TER", "EXA"]
+        assert bets[1][1] == "2.000"
+
+    def test_ganador_y_segundo_en_misma_linea(self):
+        bets = _parsear_bets_en_linea_reporte("Ganador $2 Segundo $2")
+        codigos = [
+            abreviar_apuesta(normalizar_nombre_apuesta(n)) for n, _v in bets
+        ]
+        assert codigos == ["GAN", "SEG"]
+
+    def test_cuaterna_y_cadena_en_misma_linea(self):
+        bets = _parsear_bets_en_linea_reporte(
+            "Cuaterna 2° Pase Cadena 1° Pase $500"
+        )
+        assert len(bets) == 2
+        n0, v0 = bets[0]
+        n1, v1 = bets[1]
+        assert abreviar_apuesta(normalizar_nombre_apuesta(n0)) == "QTN"
+        assert es_apuesta_excluida(n0)  # 2° Pase
+        assert abreviar_apuesta(normalizar_nombre_apuesta(n1)) == "CAD"
+        assert not es_apuesta_excluida(n1)
+        assert v1 == "500"
+
+    def test_linea_simple_sigue_una_sola(self):
+        bets = _parsear_bets_en_linea_reporte("Exacta $2.000")
+        assert len(bets) == 1
+        assert abreviar_apuesta(normalizar_nombre_apuesta(bets[0][0])) == "EXA"
 
 
 class TestColumnaCaballoPosicional:
@@ -447,6 +485,30 @@ class TestColumnaCaballoPosicional:
         ]
         assert _contar_caballos_desde_items(items)[3] == 5
 
+    def test_infiere_columna_dorsales_x205_sin_header_usable(self):
+        """Export 8248: CABALLO en x=0 (basura) y dorsales en x≈205 → cuenta 12."""
+        items = [
+            (0, 800.0, 30.0, "15"),
+            (0, 800.0, 42.0, "a"),
+            (0, 780.0, 80.0, "Condición:"),
+            (0, 9000.0, 0.0, "CABALLO"),  # header basura pypdf
+            (0, 700.0, 205.0, "01"),
+            (0, 680.0, 205.0, "02"),
+            (0, 660.0, 205.0, "03"),
+            (0, 640.0, 205.0, "04"),
+            (0, 620.0, 205.0, "05"),
+            (0, 600.0, 205.0, "06"),
+            (0, 580.0, 205.0, "07"),
+            (0, 560.0, 205.0, "08"),
+            (0, 540.0, 205.0, "09"),
+            (0, 520.0, 205.0, "10"),
+            (0, 500.0, 205.0, "11"),
+            (0, 480.0, 205.0, "12"),
+            (0, 400.0, 275.0, "SUPLENTES"),
+            (0, 380.0, 205.0, "13"),  # bajo SUPLENTES, no cuenta
+        ]
+        assert _contar_caballos_desde_items(items)[15] == 12
+
 
 _DOWNLOADS = Path(r"C:/Users/cdiaz/Downloads")
 PDF_MIERCOLES = next(_DOWNLOADS.glob("REPORTE PROGRAMA OFICIAL MIERCOLES*.pdf"), None)
@@ -455,10 +517,14 @@ PDF_JUEVES = next(_DOWNLOADS.glob("REPORTE PROGRAMA OFICIAL JUEVES*.pdf"), None)
 PDF_SABADO_26 = next(
     _DOWNLOADS.glob("Programa Oficial Sabado 26 de septiembre*.pdf"), None
 )
+PDF_8248 = next(_DOWNLOADS.glob("2026-09-22_8248.pdf"), None)
 
 
 @pytest.mark.skipif(PDF_SABADO_26 is None, reason="PDF sábado 26/09 no disponible")
 class TestTelaReporteSabado26:
+    def test_tipo_es_programa_oficial(self):
+        assert tipo_tela_oficial(PDF_SABADO_26) == "PROGRAMA OFICIAL"
+
     def test_carrera_15_no_queda_en_cero(self):
         """Bug: detector limitaba nros a 1–14 → C15=0 y C14 absorbía caballos."""
         datos = normalizar_desde_lista_apuestas(
@@ -478,6 +544,60 @@ class TestTelaReporteSabado26:
         assert datos[5]["caballos"] == 9
         assert datos[6]["caballos"] == 8
         assert datos[7]["caballos"] == 9
+
+
+@pytest.mark.skipif(PDF_8248 is None, reason="PDF 2026-09-22_8248 no disponible")
+class TestTelaExport8248:
+    """Export numérico con CABALLO x=0 / dorsales x≈205 — misma reunión 88 que Sabado."""
+
+    def test_tipo_es_programa_oficial(self):
+        assert tipo_tela_oficial(PDF_8248) == "PROGRAMA OFICIAL"
+
+    def test_carrera_15_y_c6_alineados(self):
+        datos = normalizar_desde_lista_apuestas(
+            obtener_apuestas_por_carrera(PDF_8248)
+        )
+        assert datos[15]["caballos"] == 12
+        assert datos[6]["caballos"] == 8
+        assert all(d["caballos"] > 0 for d in datos.values())
+
+    def test_mapa_c4_a_c7(self):
+        datos = normalizar_desde_lista_apuestas(
+            obtener_apuestas_por_carrera(PDF_8248)
+        )
+        assert datos[4]["caballos"] == 10
+        assert datos[5]["caballos"] == 9
+        assert datos[6]["caballos"] == 8
+        assert datos[7]["caballos"] == 9
+
+    def test_exacta_en_carreras_con_leq_11_caballos(self):
+        """Bug: Exacta pegada a Tercero no se leía → 'EXA debería estar'."""
+        datos = normalizar_desde_lista_apuestas(
+            obtener_apuestas_por_carrera(PDF_8248)
+        )
+        for n, d in datos.items():
+            if d["caballos"] <= 11:
+                assert "EXA" in d["apuestas"], f"C{n} sin EXA"
+        assert "SEG" in datos[1]["apuestas"]
+
+
+@pytest.mark.skipif(
+    PDF_8248 is None or PDF_SABADO_26 is None,
+    reason="Faltan PDF 8248 y/o Sabado 26",
+)
+class TestTelaAmbosExportsMismaReunion:
+    def test_mapa_caballos_igual_entre_exports(self):
+        sab = normalizar_desde_lista_apuestas(
+            obtener_apuestas_por_carrera(PDF_SABADO_26)
+        )
+        num = normalizar_desde_lista_apuestas(
+            obtener_apuestas_por_carrera(PDF_8248)
+        )
+        mapa_sab = {n: d["caballos"] for n, d in sab.items()}
+        mapa_num = {n: d["caballos"] for n, d in num.items()}
+        assert mapa_num == mapa_sab
+        assert mapa_sab[15] == 12
+        assert mapa_sab[6] == 8
 
 
 @pytest.mark.skipif(PDF_MIERCOLES is None, reason="PDF miércoles no disponible")

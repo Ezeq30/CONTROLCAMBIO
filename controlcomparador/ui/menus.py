@@ -204,7 +204,7 @@ def menu_principal() -> int:
     table.add_row("0", "Salir")
     console.print(table)
     try:
-        opcion = pedir_opcion("\n[bold]Seleccione el hipodromo[/bold]:")
+        opcion = pedir_opcion("\n[bold]Seleccione una opción[/bold]:")
     except EOFError:
         return 0
     try:

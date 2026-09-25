@@ -133,6 +133,11 @@ def obtener_caballos_por_carrera(ruta_pdf: str | Path) -> dict[int, int]:
 
 
 def _obtener_apuestas_programa_oficial(ruta_pdf: str | Path) -> list[list]:
+    """Fallback legacy SI (APUESTAS: + PATRON_CARRERA_PDF).
+
+    Ya no es la fuente documentada del control: el canónico es PROGRAMA OFICIAL
+    (`_obtener_apuestas_tela_reporte_oficial`). Se conserva por PDFs antiguos.
+    """
     import pypdf
     reader = pypdf.PdfReader(ruta_pdf)
     resultado = []
@@ -239,11 +244,14 @@ def es_tela_oficial(ruta_pdf: str | Path) -> bool:
 
 
 def tipo_tela_oficial(ruta_pdf: str | Path) -> str | None:
-    """Etiqueta de formato: TELA DEPURADA | TELA PROGRAMA OFICIAL | None."""
+    """Etiqueta de formato: TELA DEPURADA | PROGRAMA OFICIAL | None.
+
+    PROGRAMA OFICIAL es la fuente canónica del control San Isidro.
+    """
     if es_tela_depurada(ruta_pdf):
         return "TELA DEPURADA"
     if es_tela_reporte_oficial(ruta_pdf):
-        return "TELA PROGRAMA OFICIAL"
+        return "PROGRAMA OFICIAL"
     return None
 
 
@@ -413,11 +421,19 @@ def _obtener_apuestas_tela_oficial(ruta_pdf: str | Path) -> list[list]:
     return resultado
 
 
-_PATRON_LINEA_BET_REPORTE = re.compile(
-    r"^(Ganador|Segundo|Tercero|Exacta|Trifecta|"
+_NOMBRES_BET_REPORTE = (
     r"Imperfecta(?:\s*\(?\s*extra\s*\)?)?"
-    r"|Cuatrifecta|Doble|Triplo|Cuaterna|Quintuplo|Cadena)\b(.*)$",
+    r"|Cuatrifecta|Ganador|Segundo|Tercero|Exacta|Trifecta|"
+    r"Doble|Triplo|Cuaterna|Quintuplo|Cadena"
+)
+_PATRON_LINEA_BET_REPORTE = re.compile(
+    rf"^({_NOMBRES_BET_REPORTE})\b(.*)$",
     re.IGNORECASE,
+)
+# Algunos exports (p. ej. 8248) pegan varias apuestas en una sola línea:
+# "Tercero $2  Exacta $2.000" / "Ganador $2 Segundo $2"
+_PATRON_INICIO_BET_REPORTE = re.compile(
+    rf"(?i)({_NOMBRES_BET_REPORTE})\b"
 )
 
 
@@ -686,6 +702,27 @@ def _contar_caballos_tela_reporte(
     return (max(nums) if nums else 0), next_pending, consumio_next
 
 
+def _partir_fragmentos_bet_reporte(linea: str) -> list[str]:
+    """Parte una línea en fragmentos si hay varias apuestas concatenadas.
+
+    Export Sabado: una apuesta por línea. Export 8248: varias en la misma
+    (Ganador+Segundo, Tercero+Exacta, Cuaterna+Cadena, etc.).
+    """
+    s = linea.strip()
+    if not s:
+        return []
+    matches = list(_PATRON_INICIO_BET_REPORTE.finditer(s))
+    if not matches:
+        return []
+    frags: list[str] = []
+    for i, m in enumerate(matches):
+        end = matches[i + 1].start() if i + 1 < len(matches) else len(s)
+        frag = s[m.start():end].strip()
+        if frag:
+            frags.append(frag)
+    return frags
+
+
 def _parsear_linea_bet_reporte(linea: str) -> tuple[str, str] | None:
     """Una línea 'Exacta $2.000' / 'Quintuplo 1° Pase$1.000' → (nombre, valor)."""
     s = linea.strip()
@@ -697,6 +734,16 @@ def _parsear_linea_bet_reporte(linea: str) -> tuple[str, str] | None:
     if not nombre:
         return None
     return nombre, valor
+
+
+def _parsear_bets_en_linea_reporte(linea: str) -> list[tuple[str, str]]:
+    """Parsea una o más apuestas de una línea (soporta exports multilínea)."""
+    out: list[tuple[str, str]] = []
+    for frag in _partir_fragmentos_bet_reporte(linea):
+        parsed = _parsear_linea_bet_reporte(frag)
+        if parsed:
+            out.append(parsed)
+    return out
 
 
 _PATRON_DORSAL_COL_CABALLO = re.compile(r"^(0[1-9]|1\d|2[0-4])$")
@@ -818,9 +865,25 @@ def _dorsales_en_banda_inferida(
     next_bound: tuple[int, float] | None,
     suplentes: list[tuple[int, float]],
 ) -> tuple[set[int], dict[int, int], set[int]]:
-    """Sin header CABALLO usable: dorsales x∈[140,200] entre título y SUPLENTES."""
+    """Sin header CABALLO usable: infiere columna y cuenta hasta SUPLENTES.
+
+    1) Mediana de x de dorsales con x>=80 entre título y SUPLENTES (±35).
+    2) Si no hay muestra, banda fija [140, 220] (export 8248 usa x≈205).
+    """
     nums: set[int] = set()
     per_page: dict[int, int] = {}
+
+    def _en_ventana_vertical(dpi: int, dy: float, spi: int, sy: float) -> bool:
+        if dpi == pi == spi and sy < dy < ry:
+            return True
+        if dpi == pi and spi > pi and dy < ry:
+            return True
+        if pi < dpi < spi:
+            return True
+        if dpi == spi and spi > pi and dy > sy:
+            return True
+        return False
+
     for spi, sy in sorted(suplentes, key=lambda t: (t[0], -t[1])):
         after = (spi > pi) or (spi == pi and sy < ry)
         if not after:
@@ -830,19 +893,26 @@ def _dorsales_en_banda_inferida(
             before_next = (spi < npi) or (spi == npi and sy > ny)
             if not before_next:
                 continue
-        for dpi, dy, dx, n in dorsales:
-            if dx < 5 or not (140 <= dx <= 200):
+
+        candidatos_x: list[float] = []
+        for dpi, dy, dx, _n in dorsales:
+            if dx < 80:
                 continue
-            in_band = False
-            if dpi == pi == spi and sy < dy < ry:
-                in_band = True
-            elif dpi == pi and spi > pi and dy < ry:
-                in_band = True
-            elif pi < dpi < spi:
-                in_band = True
-            elif dpi == spi and spi > pi and dy > sy:
-                in_band = True
-            if in_band:
+            if _en_ventana_vertical(dpi, dy, spi, sy):
+                candidatos_x.append(dx)
+
+        if len(candidatos_x) >= 2:
+            cx = median(candidatos_x)
+            def _x_ok(dx: float) -> bool:
+                return abs(dx - cx) <= 35
+        else:
+            def _x_ok(dx: float) -> bool:
+                return 140 <= dx <= 220
+
+        for dpi, dy, dx, n in dorsales:
+            if dx < 5 or not _x_ok(dx):
+                continue
+            if _en_ventana_vertical(dpi, dy, spi, sy):
                 nums.add(n)
                 per_page[dpi] = per_page.get(dpi, 0) + 1
         break
@@ -855,7 +925,8 @@ def _contar_caballos_desde_items(
     """Cuenta dorsales de la columna CABALLO hasta SUPLENTES (nunca debajo).
 
     Une headers CABALLO (x>=5) entre el título y la siguiente carrera.
-    Si no hay header usable, infiere la columna por x∈[140,200].
+    Si no hay header usable (x≈0), infiere x por mediana de dorsales o
+    banda [140, 220] (exports donde la columna cae en x≈205).
 
     pypdf a veces deja dorsales en x≈0 (matriz rota). Se recuperan:
     - columna sparse (<3 hits): merge total de huérfanos si forman 01..N;
@@ -1079,23 +1150,20 @@ def _obtener_apuestas_tela_reporte_oficial(ruta_pdf: str | Path) -> list[list]:
 
         apuestas_vistas: set[str] = set()
         for linea in _extraer_bloque_apuestas_reporte(race_lines):
-            parsed = _parsear_linea_bet_reporte(linea)
-            if not parsed:
-                continue
-            nombre, valor = parsed
-            if not valor:
-                continue
-            if es_apuesta_excluida(nombre):
-                continue
-            codigo = abreviar_apuesta(normalizar_nombre_apuesta(nombre))
-            if not codigo or codigo not in CODIGOS_APUESTA_VALIDOS:
-                continue
-            if codigo in apuestas_vistas:
-                continue
-            if codigo in APUESTAS_SIN_COMPARAR_VALOR:
-                valor = ""
-            resultado.append([num_carrera, num_caballos, codigo, valor])
-            apuestas_vistas.add(codigo)
+            for nombre, valor in _parsear_bets_en_linea_reporte(linea):
+                if not valor:
+                    continue
+                if es_apuesta_excluida(nombre):
+                    continue
+                codigo = abreviar_apuesta(normalizar_nombre_apuesta(nombre))
+                if not codigo or codigo not in CODIGOS_APUESTA_VALIDOS:
+                    continue
+                if codigo in apuestas_vistas:
+                    continue
+                if codigo in APUESTAS_SIN_COMPARAR_VALOR:
+                    valor = ""
+                resultado.append([num_carrera, num_caballos, codigo, valor])
+                apuestas_vistas.add(codigo)
 
     return resultado
 

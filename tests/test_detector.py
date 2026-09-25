@@ -212,16 +212,19 @@ class TestResumenDeteccion:
         }
         assert resumen_deteccion(deteccion) == {}
 
-    def test_resumen_con_archivos(self, tmp_path):
+    def test_resumen_incluye_posting(self, tmp_path):
         pdf = tmp_path / "prog.pdf"
         pdf.write_text("")
         reporte = tmp_path / "rep.txt"
         reporte.write_text("")
+        posting = tmp_path / "posting.txt"
+        posting.write_text("CARD POSTING PRICES\n")
         deteccion = {
-            "san_isidro": {"pdf": pdf, "reporte": reporte, "posting": []},
+            "san_isidro": {"pdf": pdf, "reporte": reporte, "posting": [posting]},
             "palermo": {"bases_pdf": None, "oficial_pdf": None, "reporte": None, "posting": []},
             "la_plata": {"planilla": None, "reporte": None, "posting": []},
         }
         resumen = resumen_deteccion(deteccion)
         assert "San Isidro" in resumen
-        assert len(resumen["San Isidro"]) == 2
+        assert "posting.txt" in resumen["San Isidro"]
+        assert len(resumen["San Isidro"]) == 3

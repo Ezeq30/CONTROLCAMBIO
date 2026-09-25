@@ -16,6 +16,7 @@ HIPODROMOS = ["san_isidro", "palermo", "la_plata"]
 
 
 def _clasificar_pdf(ruta: Path) -> Optional[str]:
+    """Clasifica PDF: SI (PROGRAMA OFICIAL / Depurado / legacy), Palermo, etc."""
     import pypdf
     try:
         reader = pypdf.PdfReader(ruta)
@@ -29,6 +30,7 @@ def _clasificar_pdf(ruta: Path) -> Optional[str]:
     tiene_apuestas_a = bool(PATRON_APUESTAS_A.search(texto))
     tiene_carrera_pdf = bool(PATRON_CARRERA_PDF.search(texto))
     tiene_programa_depurado = bool(PATRON_PROGRAMA_DEPURADO.search(texto))
+    # Canónico SI: PROGRAMA OFICIAL (Na PREMIO/CLÁSICO). carrera_pdf = legacy.
     tiene_programa_oficial = bool(PATRON_PROGRAMA_OFICIAL_REPORTE.search(texto))
 
     if tiene_carrera_pdf or tiene_programa_depurado or tiene_programa_oficial:
