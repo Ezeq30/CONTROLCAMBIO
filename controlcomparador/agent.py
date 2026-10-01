@@ -82,7 +82,7 @@ class AgenteComparacion:
             "datos_pdf": normalizar_pdf(ruta_pdf, apuestas_raw=apuestas),
             "datos_reporte": datos_reporte,
             "fecha_reporte": extraer_fecha_reporte(ruta_reporte),
-            "tipo_pdf": tipo_tela_oficial(ruta_pdf) or "OFICIAL",
+            "tipo_pdf": tipo_tela_oficial(ruta_pdf),
         }
 
     def comparar_palermo(

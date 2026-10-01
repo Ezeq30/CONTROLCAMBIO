@@ -34,13 +34,16 @@ class TestClasificarTxt:
 class TestClasificarPdf:
 
     @patch("pypdf.PdfReader")
-    def test_san_isidro_por_carrera_pdf(self, mock_reader):
+    def test_formato_viejo_ya_no_es_san_isidro(self, mock_reader):
         mock_page = MagicMock()
         mock_page.extract_text.return_value = "1ª - Premio FLOWING RYE - 14:05 hs.\nAPUESTAS:"
         mock_instance = MagicMock()
         mock_instance.pages = [mock_page]
         mock_reader.return_value = mock_instance
-        assert _clasificar_pdf(Path("dummy.pdf")) == "san_isidro"
+        assert _clasificar_pdf(Path("dummy.pdf")) == "pdf_desconocido"
+
+    def test_san_isidro_fixture_8250(self):
+        assert _clasificar_pdf(FIXTURES_DIR / "programa_oficial_si_8250.pdf") == "san_isidro"
 
     @patch("pypdf.PdfReader")
     def test_san_isidro_por_programa_oficial_reporte(self, mock_reader):

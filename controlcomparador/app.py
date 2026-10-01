@@ -237,8 +237,12 @@ def _ejecutar_comparacion_san_isidro(
             "no se muestra el panel Posting al lado.[/yellow]"
         )
 
-    with console.status("[bold blue]Comparando San Isidro...[/bold blue]"):
-        resultado = _agente.comparar_san_isidro(pdf, reporte)
+    try:
+        with console.status("[bold blue]Comparando San Isidro...[/bold blue]"):
+            resultado = _agente.comparar_san_isidro(pdf, reporte)
+    except ValueError as exc:
+        console.print(f"[red]{exc}.[/red]")
+        return
     meta.append(f"Tipo PDF: {resultado.get('tipo_pdf', 'OFICIAL')}")
 
     datos_posting = None
@@ -793,8 +797,8 @@ def _resumen_tela_interactivo():
     tipo = tipo_tela_oficial(ruta)
     if not tipo:
         console.print(
-            "[red]El archivo no es un programa oficial reconocido "
-            "(ni 'PROGRAMA OFICIAL' ni 'Programa Depurado').[/red]"
+            "[red]El archivo no es un REPORTE PROGRAMA OFICIAL "
+            "de San Isidro.[/red]"
         )
         Prompt.ask("[dim]Enter para continuar...[/dim]", default="")
         return

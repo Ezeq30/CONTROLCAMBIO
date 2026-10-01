@@ -14,7 +14,7 @@ controlcomparador/                    # Paquete Python moderno (14 módulos)
 ├── agent.py                          # AgenteComparacion wrapper
 ├── detector.py                       # Auto-detecta hipódromo y tipo PDF
 ├── parsers/
-│   ├── pdf.py                        # San Isidro PDF + Palermo PDF + Tela Oficial
+│   ├── pdf.py                        # San Isidro PROGRAMA OFICIAL + Palermo PDF
 │   ├── report.py                     # RSM TABLE TXT
 │   ├── posting.py                    # CARD POSTING PRICES TXT
 │   └── planilla.py                   # La Plata XLS
@@ -60,20 +60,21 @@ pyinstaller ControlComparador.spec
 - `pools_de_carrera()` / `bases_de_carrera()` — helpers de esas dos fuentes.
 - `validar_pick_conflict(datos_reporte)` — verifica que ninguna carrera tenga dos apuestas pick (TPL/QTN/QTP/CAD) juntas, ya que son mutuamente excluyentes.
 
-#### parsers/pdf.py - Tela Oficial (dos formatos)
-- `es_tela_depurada(ruta)` — "Programa Depurado" (formato viejo)
-- `es_tela_reporte_oficial(ruta)` — "PROGRAMA OFICIAL" + headers `Na PREMIO`/`Na CLÁSICO` (formato nuevo REPORTE)
-- `es_tela_oficial(ruta)` — True si cualquiera de los dos (menú Resumen / comparación)
-- `tipo_tela_oficial(ruta)` — `"TELA DEPURADA"` | `"PROGRAMA OFICIAL"` | `None` (PROGRAMA OFICIAL = fuente canónica del control SI)
-- `_obtener_apuestas_tela_oficial(ruta)` — formato viejo: anclado por `APUESTAS:` (línea comma-separated), soporta "Clásico"
-- `_obtener_apuestas_tela_reporte_oficial(ruta)` — formato nuevo: `APUESTAS` multilínea (`Exacta $2.000`), carrera `1a PREMIO` / `8a CLÁSICO`, pases `1° Pase`
-- `_parsear_bets_tela(texto)` — parsea línea "Nombre $ Valor, ..." con filtros:
-  - **`es_apuesta_excluida(nombre)`**: excluye pases que no son 1er/1° Pase (2do–6to, último, final) pero mantiene 1er/1° y Final+1er. **Doble** sin pase se incluye; Doble con pase ≠ 1° se excluye. Ver bug fix "último Pase encoding" abajo.
+#### parsers/pdf.py - REPORTE PROGRAMA OFICIAL (único formato San Isidro)
+- Los formatos viejos (Programa Depurado y OFICIAL legacy `APUESTAS:` / `1ª - Premio … hs.`) se eliminaron en octubre 2026.
+- `es_tela_reporte_oficial(ruta)` — "PROGRAMA OFICIAL" + headers `Na PREMIO`/`Na CLÁSICO`
+- `es_tela_oficial(ruta)` — alias de `es_tela_reporte_oficial` (menú Resumen / comparación)
+- `tipo_tela_oficial(ruta)` — `"PROGRAMA OFICIAL"` | `None`
+- `obtener_apuestas_por_carrera(ruta)` — solo REPORTE PROGRAMA OFICIAL; otro PDF → `ValueError` (la app muestra el mensaje y vuelve al menú)
+- `_obtener_apuestas_tela_reporte_oficial(ruta)` — `APUESTAS` multilínea (`Exacta $2.000`), carrera `1a PREMIO` / `8a CLÁSICO`, pases `1° Pase`
+  - **`es_apuesta_excluida(nombre)`**: excluye pases que no son 1er/1° Pase (2do–6to, último, final) pero mantiene 1er/1° y Final+1er. **Doble** sin pase se incluye; Doble con pase ≠ 1° se excluye.
   - **`APUESTAS_SIN_COMPARAR_VALOR`**: GAN/SEG/TER se extraen con valor vacío (solo presencia)
-- `extraer_pases_tela_oficial(ruta)` — rama según formato; normaliza `1°`→`1er.Pase`. Retorna `{nro_carrera: {codigo: {pase_name, ...}}}`
+- **Conteo de caballos** (texto, sin coordenadas):
+  - `_bloques_caballos_programa_oficial(lineas)` — parte el documento en bloques `grilla → SUPLENTES → CHAQUETILLAS`. Hay uno por carrera y en el mismo orden que los headers, aunque pypdf los ponga antes/después del header o en otra hoja (exports con dos carreras por hoja). Si la cantidad de bloques ≠ headers, cae a la página (una carrera por hoja) o al segmento entre headers.
+  - `_caballos_bloque_programa_oficial(lineas)` — dorsal máximo de CHAQUETILLAS (`- 05 - colores`, 2 dígitos); los dorsales bajo SUPLENTES no cuentan salvo que estén en la grilla; sin CHAQUETILLAS usa la grilla.
+- `extraer_pases_tela_oficial(ruta)` — normaliza `1°`→`1er.Pase`. Retorna `{nro_carrera: {codigo: {pase_name, ...}}}`
 - `_normalizar_pase(texto)` — "1er.Pase", "2do.Pase", …, "Ultimo Pase"; también `1°`/`2º`/encoding `�`
-- `obtener_apuestas_por_carrera(ruta)` — auto-detecta: depurada → reporte oficial → programa oficial
-- `extraer_info_reunion_tela(ruta)` — depurada: título Reunion/fecha; reporte: `Reunión N°` + fecha en español + Hipódromo de San Isidro
+- `extraer_info_reunion_tela(ruta)` — `Reunión N°` + fecha en español + Hipódromo de San Isidro
 
 #### config.py
 - `APUESTAS_SIN_COMPARAR_VALOR = {"GAN", "SEG", "TER"}` — códigos que solo se comparan en existencia
@@ -89,13 +90,13 @@ pyinstaller ControlComparador.spec
 - `PATRON_CARRERA_TELA_REPORTE` — headers `1a PREMIO` / `8a CLÁSICO` del formato nuevo
 
 #### detector.py
-- `_clasificar_pdf(ruta)` — detecta `PATRON_CARRERA_PDF` (legacy), "Programa Depurado" o `PROGRAMA OFICIAL` → `"san_isidro"`
+- `_clasificar_pdf(ruta)` — `PROGRAMA OFICIAL` → `"san_isidro"` (los formatos viejos quedan como `pdf_desconocido`)
 
 #### agent.py
-- `comparar_san_isidro()` — retorna `tipo_pdf` vía `tipo_tela_oficial()` (`TELA DEPURADA` / `PROGRAMA OFICIAL`) o `"OFICIAL"` (fallback legacy)
+- `comparar_san_isidro()` — retorna `tipo_pdf` vía `tipo_tela_oficial()` (`PROGRAMA OFICIAL`)
 
 #### app.py
-- Menú San Isidro opción 5: "Resumen de programa oficial (PDF)" — acepta PROGRAMA OFICIAL y Programa Depurado
+- Menú San Isidro opción 5: "Resumen de programa oficial (PDF)" — acepta solo REPORTE PROGRAMA OFICIAL
 - `_resumen_tela_interactivo()` — selecciona PDF tela, muestra tipo detectado, BASES + VALIDACIONES, pregunta ¿Guardar HTML?
 - `_comparar_san_isidro_interactivo()` — flujo completo: selecciona PDF + reporte, compara, muestra tipo_pdf
 - Extrae pases con `extraer_pases_tela_oficial()` y los mergea en los datos para validación de secuencias
@@ -112,7 +113,8 @@ pyinstaller ControlComparador.spec
 
 ### Reglas de negocio importantes
 
-- **Tela Oficial San Isidro (dos formatos):** (1) Programa Depurado — `APUESTAS:` comma-separated; (2) REPORTE PROGRAMA OFICIAL — `APUESTAS` multilínea y pases `1° Pase`. El menú Resumen y la comparación detectan ambos. Solo `1er`/`1°` Pase con `$` cuenta como pick base; 2do–6to/`2°`–`6°` y último son secuencia.
+- **Programa San Isidro:** solo REPORTE PROGRAMA OFICIAL — `APUESTAS` multilínea y pases `1° Pase`. Solo `1er`/`1°` Pase con `$` cuenta como pick base; 2do–6to/`2°`–`6°` y último son secuencia.
+- **Caballos San Isidro:** cantidad = dorsal máximo de CHAQUETILLAS de la carrera, sin suplentes. No usar coordenadas de pypdf: a veces devuelve matrices rotas (dorsal `07` de C7 del 01/10 con x=0, y=4167) y se perdían caballos.
 - **La Plata:** CUATERNA = QTN, CUATRIFECTA = CUA (al revés que otros hipódromos)
 - **La Plata — tabla planilla vs reporte:** igual que el comparador, la columna Rep. lee montos de `bases` (RSM TABLE); la presencia en reporte usa `apuestas` (AVAILABLE POOLS). La tabla posting (derecha) ya usaba `bases`; la izquierda quedó alineada en v2.0.64.
 - **La Plata — header planilla:** el bloque PROGRAMA DE APUESTAS acepta cabecera `MAN` o `M` + `CAR` (algunos XLS traen solo `M`).
@@ -165,8 +167,13 @@ pyinstaller ControlComparador.spec
 - **Síntoma:** comparación TELA vs REPORTE reportaba picks "solo en PDF" (QTN, CAD, TPL, QTP) en carreras donde la tela no los tenía como apuesta base (ej. C4, C6, C7, C8, C10).
 - **Causa:** líneas `extra_bets` (post `Bolsa Total:`) listan pases en una sola línea comma-separated. pypdf extrae "Último Pase" corrupto (`Cuaternaltimo`, `Iltimo`, carácter ``) y el regex `ultimo\s+pase` no excluía esas entradas; `_parsear_bets_tela()` las agregaba como apuestas con valor `None`.
 - **Fix:** `PATRON_EXCLUIR_PASE_SIN_FINAL` ampliado (`6to.Pase`, `[úu]?ltimo`); `PATRON_PASE_TELA` con `selectivo` y mismo último flexible; `es_apuesta_excluida()` excluye si `PATRON_PASE_TELA` matchea y el pase ≠ 1er.Pase.
-- **Alcance:** aplica a **todos** los flujos (menú manual San Isidro, auto-detect, CLI `san-isidro`, resumen tela, OFICIAL vs POSTING) porque todos usan `obtener_apuestas_por_carrera()` → `_obtener_apuestas_tela_oficial()`.
-- **Tests:** `tests/test_tela_oficial.py` (exclusión, líneas extra, integración con PDF real).
+- **Alcance:** `es_apuesta_excluida()` sigue aplicando al REPORTE PROGRAMA OFICIAL (el parser de tela vieja se eliminó).
+- **Tests:** `tests/test_tela_oficial.py` (exclusión de pases).
+
+**Conteo de caballos San Isidro (C7 = 6 en vez de 7) — octubre 2026:**
+- **Causa:** el conteo leía la columna CABALLO por coordenadas de pypdf; en C7 el dorsal `07` y el header `CABALLO` venían con matriz rota y la banda inferida aceptaba 01–06.
+- **Fix:** conteo por texto con bloques CHAQUETILLAS emparejados por orden con los headers. Se borró el conteo por coordenadas y por segmentos con pending/lookahead.
+- **Tests:** `tests/test_programa_oficial_caballos.py` (sintéticos + PDF 8250 en `tests/fixtures/`) y el mapa viernes de `tests/test_tela_reporte_oficial.py`.
 - **Regla de negocio:** solo `1er.Pase` con `$` en extra_bets cuenta como pick base de esa carrera; 2do–6to y último son solo secuencia de pases (`extraer_pases_tela_oficial()`).
 
 ### Próximas mejoras planeadas

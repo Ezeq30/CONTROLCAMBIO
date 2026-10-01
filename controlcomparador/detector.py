@@ -4,10 +4,8 @@ from pathlib import Path
 from typing import Optional
 
 from controlcomparador.config import (
-    PATRON_CARRERA_PDF,
     PATRON_FILA_PALERMO,
     PATRON_APUESTAS_A,
-    PATRON_PROGRAMA_DEPURADO,
     PATRON_PROGRAMA_OFICIAL_REPORTE,
 )
 
@@ -16,7 +14,7 @@ HIPODROMOS = ["san_isidro", "palermo", "la_plata"]
 
 
 def _clasificar_pdf(ruta: Path) -> Optional[str]:
-    """Clasifica PDF: SI (PROGRAMA OFICIAL / Depurado / legacy), Palermo, etc."""
+    """Clasifica PDF: SI (PROGRAMA OFICIAL), Palermo, etc."""
     import pypdf
     try:
         reader = pypdf.PdfReader(ruta)
@@ -28,12 +26,9 @@ def _clasificar_pdf(ruta: Path) -> Optional[str]:
 
     tiene_fila_palermo = bool(PATRON_FILA_PALERMO.search(texto))
     tiene_apuestas_a = bool(PATRON_APUESTAS_A.search(texto))
-    tiene_carrera_pdf = bool(PATRON_CARRERA_PDF.search(texto))
-    tiene_programa_depurado = bool(PATRON_PROGRAMA_DEPURADO.search(texto))
-    # Canónico SI: PROGRAMA OFICIAL (Na PREMIO/CLÁSICO). carrera_pdf = legacy.
     tiene_programa_oficial = bool(PATRON_PROGRAMA_OFICIAL_REPORTE.search(texto))
 
-    if tiene_carrera_pdf or tiene_programa_depurado or tiene_programa_oficial:
+    if tiene_programa_oficial:
         return "san_isidro"
     if tiene_fila_palermo:
         return "palermo_bases"

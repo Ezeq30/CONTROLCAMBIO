@@ -2,18 +2,6 @@
 
 import re
 
-# Patrón para el título de carrera: "1ª - Premio FLOWING RYE 2013 - 14:05 hs."
-PATRON_CARRERA_PDF = re.compile(
-    r"(\d+)\s*[ªºa]\s*[-–]\s*(.+?)\s*[-–]\s*\d{1,2}\s*:\s*\d{2}\s*hs\.?",
-    re.IGNORECASE | re.DOTALL,
-)
-
-# Patrón para cada apuesta: "Nombre Apuesta $ valor"
-PATRON_APUESTA_VALOR = re.compile(
-    r"(.+?)\s*\$\s*([\d.,]+)",
-    re.IGNORECASE,
-)
-
 # Fragmento regex para "último pase" con variantes de encoding PDF (Útimo sin l, Último, etc.)
 _PASE_ULTIMO_FRAGMENT = (
     r"ultimo"
@@ -84,18 +72,6 @@ PATRON_CARRERA_TELA_REPORTE = re.compile(
     r"^(\d+)\s*[aªº]\s+(?:PREMIO|CL[AÁ]SICO|\S+)",
     re.IGNORECASE | re.MULTILINE,
 )
-
-# Dorsal "01 NOMBRE" o pegado "0SI02 NOMBRE" (evitar "- 01 -" de CHAQUETILLAS)
-PATRON_DORSAL_TELA_REPORTE = re.compile(
-    r"(?<![-–])(?<!\d)(0?[1-9]|1\d|2[0-4])\s+(?:[A-ZÁÉÍÓÚÑ]|')",
-)
-
-# Header de grilla ("STUD 4 ÚLTIMAS…CABALLO JOCKEY"); no nombres de stud ("STUD GRR")
-PATRON_HEADER_STUD_TELA_REPORTE = re.compile(
-    r"^STUD\s*4\b|ÚLTIMAS|ULTIMAS|CABALLO\s+JOCKEY",
-    re.IGNORECASE,
-)
-
 # Orden de pases para validación de secuencias
 ORDEN_PASES: list[str] = [
     "1er.Pase", "2do.Pase", "3er.Pase", "4to.Pase", "5to.Pase", "Ultimo Pase",
@@ -193,12 +169,6 @@ PATRON_RSM = re.compile(
 # Patrón para números de caballo
 PATRON_CABALLO = re.compile(r"^(\d{2})\s+[A-Z]", re.MULTILINE | re.IGNORECASE)
 
-# Patrón para línea de apuestas en PDF
-PATRON_LINEA_APUESTA = re.compile(
-    r"\$|ganador|segundo|tercero|exacta|trifecta|imperfecta|cuatrifecta|doble|triplo|cuaterna|quintuplo|cadena",
-    re.IGNORECASE,
-)
-
 # Patrón para fechas
 PATRON_FECHA = re.compile(r"\b\d{1,2}/\d{1,2}/\d{2,4}\b")
 
@@ -214,10 +184,7 @@ PATRON_CARRERA_OFICIAL = re.compile(r"^\s*(\d+)\s*[^0-9A-Za-z]?\s*Carrera\b", re
 # Patrón CARD DEFAULT MINIMUMS
 PATRON_DEFAULT = re.compile(r"(GAN|SEG|TER|EXA|IMP|TRI|DOB|TPL|QTN|QTP|CAD|CUA)\s+([\d.,]+)")
 
-# Patrón para detectar PDF Tela Oficial San Isidro (formato viejo)
-PATRON_PROGRAMA_DEPURADO = re.compile(r"Programa\s+Depurado", re.IGNORECASE)
-
-# Formato nuevo: REPORTE PROGRAMA OFICIAL (apuestas multilínea, pases 1° Pase)
+# REPORTE PROGRAMA OFICIAL San Isidro (apuestas multilínea, pases 1° Pase)
 PATRON_PROGRAMA_OFICIAL_REPORTE = re.compile(
     r"PROGRAMA\s+OFICIAL",
     re.IGNORECASE,
