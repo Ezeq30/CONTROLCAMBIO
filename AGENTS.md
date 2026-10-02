@@ -71,7 +71,7 @@ pyinstaller ControlComparador.spec
   - **`APUESTAS_SIN_COMPARAR_VALOR`**: GAN/SEG/TER se extraen con valor vacío (solo presencia)
 - **Conteo de caballos** (texto, sin coordenadas):
   - `_bloques_caballos_programa_oficial(lineas)` — parte el documento en bloques `grilla → SUPLENTES → CHAQUETILLAS`. Hay uno por carrera y en el mismo orden que los headers, aunque pypdf los ponga antes/después del header o en otra hoja (exports con dos carreras por hoja). Si la cantidad de bloques ≠ headers, cae a la página (una carrera por hoja) o al segmento entre headers.
-  - `_caballos_bloque_programa_oficial(lineas)` — dorsal máximo de CHAQUETILLAS (`- 05 - colores`, 2 dígitos); los dorsales bajo SUPLENTES no cuentan salvo que estén en la grilla; sin CHAQUETILLAS usa la grilla.
+  - `_caballos_bloque_programa_oficial(lineas)` — dorsal máximo de CHAQUETILLAS (`- 05 - colores`, 2 dígitos); los dorsales bajo SUPLENTES no cuentan salvo que estén en la grilla; sin CHAQUETILLAS usa la grilla. El regex se aplica sobre el texto de CHAQUETILLAS **unido** (pypdf corta entre el guion y el dorsal: `... verde -` / `15 - s/a`, C5 y C11 del PDF 8269).
 - `extraer_pases_tela_oficial(ruta)` — normaliza `1°`→`1er.Pase`. Retorna `{nro_carrera: {codigo: {pase_name, ...}}}`
 - `_normalizar_pase(texto)` — "1er.Pase", "2do.Pase", …, "Ultimo Pase"; también `1°`/`2º`/encoding `�`
 - `extraer_info_reunion_tela(ruta)` — `Reunión N°` + fecha en español + Hipódromo de San Isidro

@@ -258,7 +258,9 @@ def _caballos_bloque_programa_oficial(lineas: list[str]) -> int | None:
     """
     grilla: set[int] = set()
     suplentes: set[int] = set()
-    chaquetillas: set[int] = set()
+    # pypdf corta CHAQUETILLAS entre el guion y el dorsal ("... verde -" / "15 - s/a"):
+    # el regex se aplica sobre el texto unido, no línea por línea.
+    texto_chaquetillas: list[str] = []
     zona = "grilla"
     for linea in lineas:
         s = linea.strip()
@@ -273,16 +275,19 @@ def _caballos_bloque_programa_oficial(lineas: list[str]) -> int | None:
             zona = "grilla"
 
         if zona == "chaquetillas":
-            destino, patron = chaquetillas, _PATRON_DORSAL_CHAQUETILLA
-        elif zona == "suplentes":
-            destino, patron = suplentes, _PATRON_DORSAL_GRILLA
-        else:
-            destino, patron = grilla, _PATRON_DORSAL_GRILLA
-        for m in patron.finditer(s):
+            texto_chaquetillas.append(s)
+            continue
+        destino = suplentes if zona == "suplentes" else grilla
+        for m in _PATRON_DORSAL_GRILLA.finditer(s):
             num = int(m.group(1))
             if 1 <= num <= 24:
                 destino.add(num)
 
+    chaquetillas = {
+        int(m.group(1))
+        for m in _PATRON_DORSAL_CHAQUETILLA.finditer(" ".join(texto_chaquetillas))
+        if 1 <= int(m.group(1)) <= 24
+    }
     if chaquetillas:
         titulares = {n for n in chaquetillas if n not in suplentes or n in grilla}
     else:

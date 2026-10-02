@@ -12,6 +12,7 @@ from controlcomparador.parsers.pdf import (
 )
 
 FIXTURE_8250 = Path(__file__).parent / "fixtures" / "programa_oficial_si_8250.pdf"
+FIXTURE_8269 = Path(__file__).parent / "fixtures" / "programa_oficial_si_8269.pdf"
 
 
 def _grilla(n: int) -> list[str]:
@@ -40,6 +41,17 @@ class TestCaballosPagina:
             "1a PREMIO EJEMPLO",
         ]
         assert _caballos_bloque_programa_oficial(lineas) == 9
+
+    def test_chaquetillas_cortada_entre_guion_y_dorsal(self):
+        """pypdf corta '... verde -' / '15 - s/a' (C5 y C11 del PDF 8269)."""
+        lineas = [
+            *_grilla(15),
+            "SUPLENTES",
+            _chaquetillas(list(range(1, 15))) + " - verde y col. visera verde -",
+            "15 - s/a",
+            "5a PREMIO BAMB CRAF 2022",
+        ]
+        assert _caballos_bloque_programa_oficial(lineas) == 15
 
     def test_chaquetillas_gana_si_grilla_pierde_dorsales(self):
         """pypdf pega dorsales a otros tokens: la grilla no los ve, CHAQUETILLAS sí."""
@@ -101,3 +113,15 @@ class TestPdf8250:
         falso.write_bytes(b"%PDF-1.4\n%%EOF")
         with pytest.raises(ValueError):
             obtener_apuestas_por_carrera(falso)
+
+
+@pytest.mark.skipif(not FIXTURE_8269.exists(), reason="fixture PDF 8269 ausente")
+class TestPdf8269:
+    def test_mapa_caballos(self):
+        """Bug: C5=14 y C11=6 (CHAQUETILLAS cortada entre guion y dorsal)."""
+        esperado = {
+            1: 9, 2: 7, 3: 9, 4: 9, 5: 15, 6: 5, 7: 11, 8: 9, 9: 14,
+            10: 5, 11: 7, 12: 6, 13: 14, 14: 8, 15: 8, 16: 9, 17: 13,
+        }
+        datos = normalizar_desde_lista_apuestas(obtener_apuestas_por_carrera(FIXTURE_8269))
+        assert {n: d["caballos"] for n, d in datos.items()} == esperado
